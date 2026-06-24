@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Debug</title></head>
+<body>
+<h2>Image Debug Test</h2>
+<pre id="step1"></pre>
+<pre id="step2"></pre>
+<pre id="step3"></pre>
+<div id="render" style="border:1px solid #ccc;padding:20px;margin-top:20px"></div>
+<script type="module">
+import { marked, processHtml } from '/src/utils/mdParser.js'
+
+const content = `## 官网下载
+
+https://www.sublimetext.com/download
+
+1. 用sublime_text打开sublime_text.exe 文件
+
+2. 找到18105行
+
+3. 将原来的\`0fb6 5105 83f2 0144\`替换为\`c641 0501 31d2 9044\` 
+
+   ![img](https://img.afinit.top/image/081843c9648d4d4ba95fb2196f4627bd.png)
+
+4. 保存即可(若提示不行可另存为放到其他文件夹再剪切覆盖掉源文件)`
+
+// Step 1: marked.parse
+let htmlRaw = marked.parse(content)
+if (typeof htmlRaw !== 'string') htmlRaw = String(htmlRaw)
+document.getElementById('step1').textContent = 
+  'Step1 marked.parse - has <img>: ' + htmlRaw.includes('<img') + '\n' + htmlRaw
+
+// Step 2: processHtml
+const htmlSafe = processHtml(htmlRaw)
+document.getElementById('step2').textContent = 
+  'Step2 processHtml - has <img>: ' + htmlSafe.includes('<img') + '\n' + htmlSafe
+
+// Step 3: DOMParser (extractOutline)
+const parser = new DOMParser()
+const doc = parser.parseFromString(htmlSafe, 'text/html')
+const updatedHtml = doc.body.innerHTML
+document.getElementById('step3').textContent = 
+  'Step3 DOMParser - has <img>: ' + updatedHtml.includes('<img') + '\n' + updatedHtml
+
+// Step 4: render
+document.getElementById('render').innerHTML = updatedHtml
+</script>
+</body>
+</html>
