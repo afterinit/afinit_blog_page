@@ -156,7 +156,7 @@ const fetchArticle = async () => {
       nickname: data.nickname || '',
       userId: data.userId || '',
       summary: data.summary || '',
-      summaryHtml: data.summary ? processHtml(marked.parseInline(data.summary)) : '',
+      summaryHtml: data.summary ? processHtml(marked.parseInline(data.summary)).replace(/\n/g, '<br>') : '',
       date: dateStr,
       viewCount: data.viewCount || 0,
       likeCount: data.likeCount || 0,

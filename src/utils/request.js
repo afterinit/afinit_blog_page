@@ -68,6 +68,7 @@ function createFetchResponse(response) {
     },
     json: async () => parseBody(data),
     text: async () => stringifyBody(data),
+    blob: async () => data,
   }
 }
 
@@ -80,8 +81,17 @@ function handleAuthFailure(skipRedirect = false) {
   onAuthExpired()
 }
 
-function isBusinessAuthError(response) {
-  const data = parseBody(response.data)
+async function isBusinessAuthError(response) {
+  let data = response.data
+  if (data instanceof Blob && data.type.includes('application/json')) {
+    try {
+      data = JSON.parse(await data.text())
+    } catch {
+      // Ignore
+    }
+  } else {
+    data = parseBody(data)
+  }
   const code = String(data?.code)
   return ['20410', '20412', '20413'].includes(code)
 }
@@ -179,7 +189,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   // ── 成功处理器（收到 HTTP 响应，包括 401） ──
   async (response) => {
-    if (response.status !== 401 && !isBusinessAuthError(response)) {
+    if (response.status !== 401 && !(await isBusinessAuthError(response))) {
       return response
     }
     
@@ -248,6 +258,7 @@ export default function request(url, options = {}) {
   }
   if (options.body !== undefined) config.data = options.body
   if (options.skipAuthRedirect) config.skipAuthRedirect = true
+  if (options.responseType) config.responseType = options.responseType
 
   return http(config).then(createFetchResponse)
 }

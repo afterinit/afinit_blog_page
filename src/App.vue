@@ -8,11 +8,11 @@
   <!-- 全局登录过期弹窗 -->
   <div v-if="showAuthExpiredModal" class="global-auth-modal">
     <div class="auth-modal-content">
-      <h3>⚠️ 登录已过期</h3>
+      <h3>未登录或登录已过期</h3>
       <p>您的登录凭证已失效，请重新登录</p>
       <div class="auth-modal-btns">
         <button class="btn-cancel" @click="cancelAuthExpiredModal">取消</button>
-        <button class="btn-confirm" @click="closeAuthExpiredModal">重新登录</button>
+        <button class="btn-confirm" @click="closeAuthExpiredModal">登录</button>
       </div>
     </div>
   </div>

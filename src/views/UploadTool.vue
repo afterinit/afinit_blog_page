@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseMdToJson, processHtml, marked } from '../utils/mdParser.js'
 import { parseJsonSafe, extractDataIdFromJsonText } from '../utils/json.js'
@@ -9,58 +9,44 @@ import { useDialog } from '../composables/useDialog.js'
 import request, { AuthError } from '../utils/request.js'
 
 const router = useRouter()
-const mode = ref('md2json')
 const inputText = ref('')
 const fileInput = ref(null)
+const textareaRef = ref(null)
 const {
   dialog: customAlert,
   showDialog: showAlert,
   confirmDialog: handleAlertConfirm,
 } = useDialog()
 
-const mdToJsonResult = computed(() => {
-  if (mode.value !== 'md2json' || !inputText.value.trim()) return ''
-  try {
-    const jsonObj = parseMdToJson(inputText.value)
-    return JSON.stringify(jsonObj, null, 2)
-  } catch (e) {
-    return `解析出错: ${e.message}`
-  }
-})
-
 const articleData = computed(() => {
-  if (mode.value !== 'json2md' || !inputText.value.trim()) return null
+  if (!inputText.value.trim()) return null
   try {
-    const parsed = JSON.parse(inputText.value)
-    const data = parsed.data ? parsed.data : parsed
+    const parsed = parseMdToJson(inputText.value)
     
-    let dateStr = data.createTime || ''
-    if (dateStr) dateStr = dateStr.replace('T', ' ')
-
-    let htmlRaw = marked.parse(data.content || '');
+    let htmlRaw = marked.parse(parsed.content || '');
     if (typeof htmlRaw !== 'string') {
         htmlRaw = String(htmlRaw);
     }
     const htmlSafe = processHtml(htmlRaw);
 
+    // 生成当前时间用于预览显示
+    const now = new Date()
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0')
+
     return {
-      title: data.title || '未命名标题',
-      summary: data.summary || '',
-      summaryHtml: data.summary ? processHtml(marked.parseInline(data.summary)) : '',
+      title: parsed.title || '未命名标题',
+      summary: parsed.summary || '',
+      summaryHtml: parsed.summary ? processHtml(marked.parseInline(parsed.summary)).replace(/\n/g, '<br>') : '',
       date: dateStr,
-      viewCount: data.viewCount || 0,
-      likeCount: data.likeCount || 0,
-      htmlContent: htmlSafe
+      viewCount: 0,
+      likeCount: 0,
+      htmlContent: htmlSafe,
+      rawContent: parsed.content
     }
   } catch (e) {
-    return { error: '解析出错: 请确保输入的是合法的 JSON 数据' }
+    return { error: '解析出错: ' + e.message }
   }
 })
-
-function setMode(newMode) {
-  mode.value = newMode
-  inputText.value = ''
-}
 
 function handleDrop(e) {
   e.preventDefault()
@@ -82,33 +68,21 @@ function readFile(file) {
   reader.readAsText(file)
 }
 
-async function copyOutput() {
-  if (!mdToJsonResult.value || mdToJsonResult.value.startsWith('解析出错')) return
-  try {
-    await navigator.clipboard.writeText(mdToJsonResult.value)
-    showAlert('复制成功')
-  } catch (err) {
-    showAlert('复制失败')
-  }
-}
-
 async function publishArticle() {
-  if (!mdToJsonResult.value || mdToJsonResult.value.startsWith('解析出错')) {
+  if (!articleData.value || articleData.value.error) {
     showAlert('没有可发布的有效内容');
     return;
   }
   
   try {
-    const parsedData = JSON.parse(mdToJsonResult.value);
-    
     const apiUrl = import.meta.env.VITE_API_BASE_URL;
     const response = await request(`${apiUrl}/blog`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: parsedData.title,
-        summary: parsedData.summary,
-        content: parsedData.content
+        title: articleData.value.title,
+        summary: articleData.value.summary,
+        content: articleData.value.rawContent
       })
     });
     
@@ -120,11 +94,10 @@ async function publishArticle() {
     refreshHomePosts()
 
     showAlert(getApiSuccessMessage(res, '发布成功！'), () => {
-      // 跳转到新发布的文章详情页，优先使用正则抠出来的精准字符串 ID
       if (newId) {
-        router.push(`/blog/${newId}`);
+        router.push(`/blog/${newId}?type=private`);
       } else if (res.data) {
-        router.push(`/blog/${res.data}`);
+        router.push(`/blog/${res.data}?type=private`);
       } else {
         router.push('/');
       }
@@ -135,6 +108,119 @@ async function publishArticle() {
     showAlert(err.message);
   }
 }
+const downloadMd = () => {
+  if (!inputText.value.trim()) {
+    showAlert('没有可下载的内容');
+    return;
+  }
+  
+  const blob = new Blob([inputText.value], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const filename = articleData.value?.title ? `${articleData.value.title}.md` : 'article.md';
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+const handleKeydown = (e) => {
+  const el = textareaRef.value
+  if (!el) return
+
+  // Handle Tab key
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    
+    // Simple 4-space indentation for better code block experience
+    inputText.value = inputText.value.substring(0, start) + '    ' + inputText.value.substring(end)
+    
+    nextTick(() => {
+      el.selectionStart = el.selectionEnd = start + 4
+    })
+    return
+  }
+
+  // Handle Auto-pairing
+  const pairs = {
+    '{': '}',
+    '[': ']',
+    '(': ')',
+    '"': '"',
+    "'": "'",
+    '`': '`',
+    '*': '*'
+  }
+  
+  if (pairs[e.key]) {
+    const start = el.selectionStart
+    const end = el.selectionEnd
+
+    // If typing the closing bracket/quote when it's already there, just move cursor
+    if (start === end && inputText.value[start] === e.key && Object.values(pairs).includes(e.key)) {
+      e.preventDefault()
+      el.selectionStart = el.selectionEnd = start + 1
+      return
+    }
+
+    e.preventDefault()
+    // Insert pair
+    inputText.value = inputText.value.substring(0, start) + e.key + pairs[e.key] + inputText.value.substring(end)
+    
+    // Move cursor between the pair
+    nextTick(() => {
+      el.selectionStart = el.selectionEnd = start + 1
+    })
+    return
+  }
+  
+  // Handle Backspace inside an empty pair
+  if (e.key === 'Backspace') {
+    const start = el.selectionStart
+    if (start === el.selectionEnd && start > 0) {
+      const prevChar = inputText.value[start - 1]
+      const nextChar = inputText.value[start]
+      if (pairs[prevChar] && pairs[prevChar] === nextChar) {
+        e.preventDefault()
+        inputText.value = inputText.value.substring(0, start - 1) + inputText.value.substring(start + 1)
+        nextTick(() => {
+          el.selectionStart = el.selectionEnd = start - 1
+        })
+        return
+      }
+    }
+  }
+
+  // Handle Enter between braces (like IDEA)
+  if (e.key === 'Enter') {
+    const start = el.selectionStart
+    if (start === el.selectionEnd && start > 0) {
+      const prevChar = inputText.value[start - 1]
+      const nextChar = inputText.value[start]
+      if (prevChar === '{' && nextChar === '}') {
+        e.preventDefault()
+        const before = inputText.value.substring(0, start)
+        const after = inputText.value.substring(start)
+        
+        // Match the indentation of the current line
+        const lines = before.split('\n')
+        const currentLine = lines[lines.length - 1]
+        const indentMatch = currentLine.match(/^\s*/)
+        const indent = indentMatch ? indentMatch[0] : ''
+        
+        inputText.value = before + '\n' + indent + '    \n' + indent + after
+        nextTick(() => {
+          el.selectionStart = el.selectionEnd = start + 1 + indent.length + 4
+        })
+        return
+      }
+    }
+  }
+}
 </script>
 
 <template>
@@ -142,11 +228,10 @@ async function publishArticle() {
     <div class="header">
       <div class="header-left">
         <button class="back-btn" @click="router.push('/')">← 返回列表</button>
-        <h1>工具箱</h1>
+        <h1>Markdown 编辑器</h1>
       </div>
-      <div class="tabs">
-        <button class="tab" :class="{ active: mode === 'md2json' }" @click="setMode('md2json')">MD 转 JSON</button>
-        <button class="tab" :class="{ active: mode === 'json2md' }" @click="setMode('json2md')">JSON 预览</button>
+      <div class="header-actions">
+        <button class="btn" @click="publishArticle">发布文章</button>
       </div>
     </div>
 
@@ -154,46 +239,39 @@ async function publishArticle() {
       <!-- 输入区 -->
       <div class="editor-pane">
         <div class="pane-header">
-          <span>输入 (单文本框，自动解析)</span>
-          <button class="btn btn-sm btn-outline" @click="fileInput.click()">选择文件</button>
-          <input ref="fileInput" type="file" style="display: none" @change="handleFileSelect" />
+          <span>编辑 (支持拖拽 Markdown 文件)</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-outline" @click="downloadMd">下载 MD</button>
+            <button class="btn btn-sm btn-outline" @click="fileInput.click()">导入文件</button>
+          </div>
+          <input ref="fileInput" type="file" style="display: none" accept=".md,.txt" @change="handleFileSelect" />
         </div>
         <textarea 
+          ref="textareaRef"
           class="text-input" 
           v-model="inputText" 
-          :placeholder="mode === 'md2json' ? '在此粘贴包含 # 标题 和 摘要 的完整 Markdown 文本...' : '在此粘贴后端返回的 JSON 数据...'"
+          placeholder="在此编写 Markdown...&#10;&#10;第一行请写 # 标题&#10;接着使用 > 编写文章摘要（可选）&#10;&#10;然后是文章正文内容。"
+          @keydown="handleKeydown"
           @dragover.prevent
           @drop="handleDrop"
         ></textarea>
       </div>
 
-      <!-- 输出区 (MD转JSON) -->
-      <div class="editor-pane" v-if="mode === 'md2json'">
+      <!-- 预览区 -->
+      <div class="editor-pane preview-pane">
         <div class="pane-header">
-          <span>JSON 结果</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-sm btn-outline" @click="copyOutput">复制 JSON</button>
-            <button class="btn btn-sm" @click="publishArticle">发布文章</button>
-          </div>
-        </div>
-        <textarea class="text-output" readonly :value="mdToJsonResult" placeholder="转换结果将自动显示在这里..."></textarea>
-      </div>
-
-      <!-- 预览区 (JSON转文章渲染) -->
-      <div class="editor-pane preview-pane" v-if="mode === 'json2md'">
-        <div class="pane-header">
-          <span>文章预览</span>
+          <span>实时渲染</span>
         </div>
         <div class="preview-content">
-          <div v-if="!articleData" class="placeholder">粘贴 JSON 数据后在此预览</div>
+          <div v-if="!articleData" class="placeholder">在左侧编写 Markdown 后实时预览</div>
           <div v-else-if="articleData.error" class="error">{{ articleData.error }}</div>
           <div v-else class="article-render">
             <h1 class="article-title">{{ articleData.title }}</h1>
             <p v-if="articleData.summary" class="article-summary typora-style" style="margin-top: 0;" v-html="articleData.summaryHtml"></p>
             <div class="article-meta">
-              <span v-if="articleData.date">🕒 {{ articleData.date }}</span>
-              <span>👁️ 阅读 {{ articleData.viewCount }}</span>
-              <span>👍 点赞 {{ articleData.likeCount }}</span>
+              <span>{{ articleData.date }}</span>
+              <span>阅读 {{ articleData.viewCount }}</span>
+              <span>点赞 {{ articleData.likeCount }}</span>
             </div>
             <div class="typora-style" v-html="articleData.htmlContent"></div>
           </div>
@@ -215,26 +293,24 @@ async function publishArticle() {
 </template>
 
 <style scoped>
-.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #fdfdfd; }
 .header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .header-left { display: flex; align-items: center; gap: 20px; }
+.header-actions { display: flex; gap: 12px; }
 .back-btn { background: transparent; border: none; font-size: 14px; color: #666; cursor: pointer; transition: color 0.2s; }
 .back-btn:hover { color: #111; }
 .header h1 { font-size: 20px; font-weight: 500; color: #111; margin: 0; letter-spacing: -0.5px; }
 
-.tabs { display: flex; gap: 8px; }
-.tab { background: transparent; border: none; padding: 6px 12px; font-size: 13px; color: #666; cursor: pointer; border-radius: 4px; transition: all 0.2s; }
-.tab:hover { background: #f0f0f0; color: #111; }
-.tab.active { background: #111; color: #fff; }
-
 .editor-container { display: flex; gap: 20px; flex: 1; min-height: 0; }
 .editor-pane { flex: 1; display: flex; flex-direction: column; background: #fafafa; border: 1px solid #eaeaea; border-radius: 6px; overflow: hidden; }
 .pane-header { padding: 12px 16px; background: #fff; border-bottom: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666; }
-.text-input, .text-output { flex: 1; width: 100%; border: none; padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6; color: #333; resize: none; background: transparent; outline: none; box-sizing: border-box; }
-.text-output { background: #f9f9f9; }
+.text-input { flex: 1; width: 100%; border: none; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; color: #333; resize: none; background: transparent; outline: none; box-sizing: border-box; }
 
-.btn { padding: 6px 12px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.btn { padding: 6px 16px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .btn:hover { background-color: #333; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
 .btn-outline:hover { background: #f5f5f5; border-color: #111; }
 
@@ -244,28 +320,178 @@ async function publishArticle() {
 .error { color: red; text-align: center; margin-top: 100px; font-size: 14px; }
 
 /* Typora 主题文章样式 */
-.article-render { max-width: 800px; margin: 0 auto; }
-.article-title { font-size: 32px; font-weight: 600; color: #111; margin: 0 0 20px 0; line-height: 1.4; }
-.article-meta { display: flex; gap: 20px; font-size: 14px; color: #888; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+.article-render { animation: fade-in 0.6s ease-out; }
+@keyframes fade-in { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+
+.article-title { font-size: 40px; font-weight: 800; color: #111; margin: 0 0 24px 0; line-height: 1.3; letter-spacing: -0.03em; }
+
+.article-summary { 
+  font-size: 16px; 
+  color: #444; 
+  background: linear-gradient(135deg, #fdfbfb 0%, #f3f4f6 100%);
+  padding: 20px 24px; 
+  border-left: 4px solid #111; 
+  margin: 0 0 24px 0; 
+  border-radius: 0 8px 8px 0; 
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  line-height: 1.6;
+}
+
+.article-meta { 
+  display: flex; 
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px; 
+  font-size: 14px; 
+  color: #777; 
+  margin-bottom: 48px; 
+  padding-bottom: 24px; 
+  border-bottom: 1px solid rgba(0,0,0,0.06); 
+  font-weight: 500;
+}
+.article-meta span { display: flex; align-items: center; gap: 6px; }
 
 /* Typora HTML 渲染细节样式 */
-.typora-style { font-size: 16px; line-height: 1.8; color: #333; }
-.typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: #111; font-weight: 600; margin-top: 1.5em; margin-bottom: 0.8em; }
-.typora-style :deep(h1) { font-size: 24px; padding-bottom: 0.3em; border-bottom: 1px solid #eaeaea; }
-.typora-style :deep(h2) { font-size: 20px; padding-bottom: 0.3em; border-bottom: 1px solid #eaeaea; }
-.typora-style :deep(h3) { font-size: 18px; }
-.typora-style :deep(p) { margin: 1em 0; }
-.typora-style :deep(img) { max-width: 100%; display: block; margin: 20px auto; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.typora-style :deep(blockquote) { margin: 1.5em 0; padding: 10px 20px; border-left: 4px solid #ddd; background-color: #f9f9f9; color: #666; }
-.typora-style :deep(code) { font-family: monospace; background-color: #f3f4f4; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #c7254e; }
-.typora-style :deep(pre) { background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; line-height: 1.45; position: relative; }
-.typora-style :deep(pre[data-lang]) { padding-top: 36px; }
-.typora-style :deep(pre[data-lang])::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 12px; color: #999; text-transform: uppercase; font-weight: 500; user-select: none; pointer-events: none; }
-.typora-style :deep(pre code) { background-color: transparent; padding: 0; }
-.typora-style :deep(ul), .typora-style :deep(ol) { padding-left: 2em; margin: 1em 0; }
-.typora-style :deep(li) { margin: 0.2em 0; }
-.typora-style :deep(a) { color: #0366d6; text-decoration: none; }
-.typora-style :deep(a:hover) { text-decoration: underline; }
+.typora-style { font-size: 17px; line-height: 1.85; color: #333; }
+.typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: #111; font-weight: 700; margin-top: 2em; margin-bottom: 1em; letter-spacing: -0.01em; }
+.typora-style :deep(h1) { font-size: 28px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.typora-style :deep(h2) { font-size: 24px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.typora-style :deep(h3) { font-size: 20px; }
+.typora-style :deep(p) { margin: 1.2em 0; }
+.typora-style :deep(img) { 
+  max-width: 100%; 
+  display: block; 
+  margin: 32px auto; 
+  border-radius: 8px; 
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08); 
+  cursor: zoom-in; 
+  transition: transform 0.3s ease;
+}
+.typora-style :deep(video) { 
+  width: 100%;
+  max-width: 100%; 
+  height: auto;
+  display: block; 
+  margin: 32px auto; 
+  border-radius: 8px; 
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08); 
+  outline: none;
+}
+.typora-style :deep(img:hover) { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+.typora-style :deep(blockquote) { 
+  margin: 2em 0; 
+  padding: 16px 24px; 
+  border-left: 4px solid #ddd; 
+  background-color: #fafafa; 
+  color: #555; 
+  font-style: italic;
+  border-radius: 0 8px 8px 0;
+}
+.typora-style :deep(code) { 
+  font-family: 'JetBrains Mono', monospace; 
+  background-color: #f0f1f3; 
+  padding: 3px 6px; 
+  border-radius: 6px; 
+  font-size: 0.85em; 
+  color: #d13a69; 
+}
+.typora-style :deep(pre) { 
+  background-color: #ffffff; 
+  color: #333;
+  padding: 20px; 
+  border-radius: 12px; 
+  overflow-x: auto; 
+  line-height: 1.5; 
+  position: relative; 
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.06);
+  margin: 2em 0;
+}
+.typora-style :deep(pre::before) {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f56;
+  box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
+}
+.typora-style :deep(pre[data-lang]) { padding-top: 48px; }
+.typora-style :deep(pre[data-lang])::after { 
+  content: attr(data-lang); 
+  position: absolute; 
+  top: 12px; 
+  right: 16px; 
+  font-size: 12px; 
+  color: #888; 
+  text-transform: uppercase; 
+  font-weight: 600; 
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.typora-style :deep(.copy-code-btn) {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  padding: 4px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.typora-style :deep(pre:hover .copy-code-btn) { opacity: 1; }
+.typora-style :deep(pre:hover::after) { opacity: 0; }
+.typora-style :deep(.copy-code-btn:hover) { color: #111; }
+.typora-style :deep(pre code) { background-color: transparent; padding: 0; color: inherit; font-size: 15px; }
+.typora-style :deep(ul), .typora-style :deep(ol) { padding-left: 2em; margin: 1.2em 0; }
+.typora-style :deep(li) { margin: 0.4em 0; }
+.typora-style :deep(a) { 
+  color: #0366d6; 
+  text-decoration: none; 
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, color 0.2s;
+}
+.typora-style :deep(a:hover) { 
+  color: #005cc5;
+  border-bottom-color: #005cc5;
+}
+
+/* 表格样式优化 */
+.typora-style :deep(table) {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 2em 0;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.typora-style :deep(th), .typora-style :deep(td) {
+  padding: 12px 16px;
+  text-align: left;
+}
+.typora-style :deep(thead th) {
+  border-top: 1px solid #111;
+  border-bottom: 1px solid #111;
+  font-weight: 600;
+  color: #111;
+}
+.typora-style :deep(tbody tr:last-child td) {
+  border-bottom: 1px solid #111;
+}
+.typora-style :deep(tbody tr:not(:last-child) td) {
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
 
 /* 弹窗样式 */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }

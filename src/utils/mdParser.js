@@ -68,8 +68,12 @@ export function parseMdToJson(rawContent) {
   // 提取摘要并将其从正文中删除（仅当首个非空内容以 > 开头时认为有摘要）
   const firstNonEmptyIdx = lines.findIndex(line => line.trim() !== '')
   if (firstNonEmptyIdx !== -1 && lines[firstNonEmptyIdx].trim().startsWith('>')) {
-    while (firstNonEmptyIdx < lines.length && lines[firstNonEmptyIdx].trim().startsWith('>')) {
-      const lineText = lines[firstNonEmptyIdx].trim().replace(/^>\s*/, '')
+    while (firstNonEmptyIdx < lines.length) {
+      const line = lines[firstNonEmptyIdx]
+      if (line.trim() === '') {
+        break; // 遇到空行停止提取摘要
+      }
+      const lineText = line.trim().replace(/^>\s*/, '')
       summary += (summary ? '\n' : '') + lineText
       lines.splice(firstNonEmptyIdx, 1)
     }

@@ -472,7 +472,7 @@ onUnmounted(() => {
               <label>
                 邮箱
                 <!-- TODO: 邮箱修改需单独接口（两步验证），后端完成后启用 -->
-                <span class="field-hint">修改邮箱功能即将开放</span>
+                <span class="field-hint">暂不支持修改邮箱</span>
               </label>
               <input
                 type="email"

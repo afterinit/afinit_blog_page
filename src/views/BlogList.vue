@@ -231,10 +231,15 @@ async function logout() {
 
 const showDropdown = ref(false)
 const userMenuRef  = ref(null)
+const showToolsDropdown = ref(false)
+const toolsMenuRef = ref(null)
 
 function onOutsideClick(e) {
   if (userMenuRef.value && !userMenuRef.value.contains(e.target)) {
     showDropdown.value = false
+  }
+  if (toolsMenuRef.value && !toolsMenuRef.value.contains(e.target)) {
+    showToolsDropdown.value = false
   }
 }
 
@@ -285,9 +290,30 @@ onUnmounted(() => {
     <!-- 顶部栏 -->
     <header class="header">
       <h1>afinit blog</h1>
-      <div>
+      <div class="header-actions">
         <template v-if="isLoggedIn">
-          <div class="user-menu" ref="userMenuRef" @click.stop="showDropdown = !showDropdown">
+          <!-- 工具菜单 -->
+          <div class="user-menu" ref="toolsMenuRef" @click.stop="showToolsDropdown = !showToolsDropdown; showDropdown = false">
+            <span class="tools-btn-label">工具</span>
+            <span class="dropdown-caret" :class="{ rotated: showToolsDropdown }">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1.5 3.5L5 7L8.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <Transition name="dropdown">
+              <div v-if="showToolsDropdown" class="dropdown-menu">
+                <div class="dropdown-item" @click.stop="() => { showToolsDropdown = false; router.push('/upload') }">
+                  Markdown 写作
+                </div>
+                <div class="dropdown-item" @click.stop="() => { showToolsDropdown = false; router.push('/generator') }">
+                  项目构建器
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <!-- 用户头像菜单 -->
+          <div class="user-menu" ref="userMenuRef" @click.stop="showDropdown = !showDropdown; showToolsDropdown = false">
             <div class="user-avatar">
               <img
                 v-if="userInfo?.avatar"
@@ -308,10 +334,6 @@ onUnmounted(() => {
               <div v-if="showDropdown" class="dropdown-menu">
                 <div class="dropdown-item" @click.stop="() => { showDropdown = false; router.push('/profile') }">
                   个人资料
-                </div>
-                <div class="dropdown-divider"></div>
-                <div class="dropdown-item" @click.stop="() => { showDropdown = false; router.push('/upload') }">
-                  管理 / 上传
                 </div>
                 <div class="dropdown-divider"></div>
                 <div class="dropdown-item danger" @click.stop="logout">退出登录</div>
@@ -454,6 +476,7 @@ onUnmounted(() => {
   padding-bottom: 20px;
 }
 .header h1 { font-size: 24px; font-weight: 600; color: #111; margin: 0; letter-spacing: -0.5px; }
+.header-actions { display: flex; align-items: center; gap: 16px; }
 
 .btn { padding: 6px 14px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
@@ -528,6 +551,7 @@ onUnmounted(() => {
   transition: background 0.2s, border-color 0.2s;
 }
 .user-menu:hover { background: #f5f5f5; border-color: #d0d0d0; }
+.tools-btn-label { font-size: 13px; color: #111; font-weight: 500; padding-left: 5px; }
 
 .user-avatar {
   width: 28px; height: 28px; border-radius: 50%;
