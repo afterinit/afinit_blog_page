@@ -87,7 +87,7 @@ async function publishArticle() {
 
     showAlert(res.msg || res.message || '发布成功！', () => {
       const isAdmin = userInfo.value && userInfo.value.role === 1;
-      const query = isAdmin ? '' : '?type=private';
+      const query = isAdmin ? '' : '?type=personal';
       const newId = res.data;
       
       if (newId) {

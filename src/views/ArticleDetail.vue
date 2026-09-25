@@ -134,8 +134,10 @@ const fetchArticle = async () => {
   error.value = ''
   try {
     const id = route.params.id
-    const isPrivate = route.query.type === 'private'
-    const res = await blogApi.getBlogDetail(id, isPrivate)
+    // type=private → 管理员审核详情；type=personal → 用户自己的待审/草稿
+    const type = route.query.type
+    const scope = type === 'private' || type === 'personal' ? type : 'public'
+    const res = await blogApi.getBlogDetail(id, scope)
 
     const data = res.data ? res.data : res
 
@@ -1248,6 +1250,26 @@ onUnmounted(() => {
 
   .editor-textarea {
     height: 60vh;
+  }
+
+  .header-nav {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 0;
+    margin-bottom: 24px;
+  }
+
+  .action-buttons {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .action-buttons .btn {
+    font-size: 12px;
+    padding: 6px 10px;
   }
 }
 

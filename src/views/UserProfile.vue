@@ -422,7 +422,7 @@ onUnmounted(() => {
           :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
           v-for="post in personalPosts"
           :key="post.id"
-          @click="router.push(`/blog/${post.id}${post.status === 0 ? '?type=private' : ''}`)"
+          @click="router.push(`/blog/${post.id}${post.status === 0 ? '?type=personal' : ''}`)"
         >
           <h2 class="post-title">
             <span v-if="post.status === 0" class="status-tag">未发布</span>

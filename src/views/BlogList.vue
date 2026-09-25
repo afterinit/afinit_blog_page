@@ -51,8 +51,11 @@ async function fetchPosts(silent = false) {
   if (!silent) postsLoading.value = true
   postsError.value   = ''
   try {
-    const isPrivate = currentTab.value === 'private'
-    const res = await blogApi.getBlogList(postsPage.value, postsSize.value, isPrivate)
+    // 管理员「文章审核」走 /blog/private，普通用户「待审核」走 /blog/personal
+    const scope = currentTab.value === 'private'
+      ? (userInfo.value?.role === 1 ? 'private' : 'personal')
+      : 'public'
+    const res = await blogApi.getBlogList(postsPage.value, postsSize.value, scope)
     const data = res.data
     posts.value = Array.isArray(data) ? data : (data?.records ?? [])
     postsTotal.value = data?.total || 0
@@ -444,7 +447,7 @@ onUnmounted(() => {
             :class="{ 'post-card--self': userInfo && String(userInfo.id) === String(post.userId) }"
             v-for="post in posts"
             :key="post.id"
-            @click="router.push(`/blog/${post.id}${currentTab === 'private' ? '?type=private' : ''}`)"
+            @click="router.push(`/blog/${post.id}${currentTab === 'private' ? (userInfo?.role === 1 ? '?type=private' : '?type=personal') : ''}`)"
           >
             <h2 class="post-title">{{ post.title }}</h2>
             <p class="post-summary">{{ post.summary }}</p>
@@ -651,4 +654,30 @@ onUnmounted(() => {
 .page-info { font-size: 14px; color: var(--text-secondary); }
 .btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border-color); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--text-secondary); color: var(--text-primary); }
+
+@media (max-width: 768px) {
+  .container { padding: 20px 16px 40px; }
+  .header {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    align-items: flex-start;
+  }
+  .header h1 { font-size: 20px; }
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  .contact-link { font-size: 13px; margin-right: auto; }
+  .user-nickname { display: none; }
+  .tabs { gap: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+  .post-card { padding: 18px 8px; }
+  .post-title { font-size: 16px; }
+  .inline-actions { width: 100%; margin-left: 0; margin-top: 4px; }
+}
 </style>
