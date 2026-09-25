@@ -345,7 +345,7 @@ const handleKeydown = (e) => {
 .article-meta span { display: flex; align-items: center; gap: 6px; }
 
 /* Typora HTML 渲染细节样式 */
-.typora-style { font-size: 17px; line-height: 1.85; color: var(--text-primary); }
+.typora-style { font-size: 17px; line-height: 1.85; color: var(--text-primary); overflow-wrap: break-word; word-wrap: break-word; max-width: 100%; }
 .typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: var(--text-primary); font-weight: 700; margin-top: 2em; margin-bottom: 1em; letter-spacing: -0.01em; }
 .typora-style :deep(h1) { font-size: 28px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
 .typora-style :deep(h2) { font-size: 24px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
@@ -382,7 +382,13 @@ const handleKeydown = (e) => {
   background-color: var(--bg-hover); 
   padding: 3px 6px; 
   font-size: 0.85em; 
-  color: var(--danger-color); 
+  color: var(--danger-color);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .typora-style :deep(pre) { 
   background-color: var(--bg-secondary); 
@@ -393,6 +399,7 @@ const handleKeydown = (e) => {
   position: relative; 
   border: 1px solid var(--border-color);
   margin: 2em 0;
+  max-width: 100%;
 }
 .typora-style :deep(pre::before) { display: none; }
 .typora-style :deep(pre[data-lang]) { padding-top: 48px; }
@@ -428,7 +435,15 @@ const handleKeydown = (e) => {
 .typora-style :deep(pre:hover .copy-code-btn) { opacity: 1; }
 .typora-style :deep(pre:hover::after) { opacity: 0; }
 .typora-style :deep(.copy-code-btn:hover) { color: var(--text-primary); }
-.typora-style :deep(pre code) { background-color: transparent; padding: 0; color: inherit; font-size: 15px; }
+.typora-style :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 15px;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .typora-style :deep(ul), .typora-style :deep(ol) { padding-left: 2em; margin: 1.2em 0; }
 .typora-style :deep(li) { margin: 0.4em 0; }
 .typora-style :deep(a) { 

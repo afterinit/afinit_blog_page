@@ -43,16 +43,15 @@ body, html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 覆盖 view-transition 默认效果，防止默认 cross-fade 干扰 */
-::view-transition-old(root),
-::view-transition-new(root) {
+/* 只有电脑端启用扩散动画时，才覆盖默认的渐隐渐出动画 */
+html.theme-transition-circle::view-transition-old(root),
+html.theme-transition-circle::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
   display: block;
 }
-/* 永远让新视图在上面，配合从点击处向外扩散的 clip-path 动画 */
-::view-transition-old(root) { z-index: 1; }
-::view-transition-new(root) { z-index: 9999; }
+html.theme-transition-circle::view-transition-old(root) { z-index: 1; }
+html.theme-transition-circle::view-transition-new(root) { z-index: 9999; }
 
 * {
   box-sizing: border-box;

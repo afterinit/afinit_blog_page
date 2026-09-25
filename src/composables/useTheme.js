@@ -2,73 +2,106 @@ import { ref } from 'vue'
 
 const currentTheme = ref(localStorage.getItem('theme') || 'dark')
 
+const THEME_COLORS = {
+  light: '#fdfdfd',
+  dark: '#0a0a0a'
+}
+
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
   localStorage.setItem('theme', theme)
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.dark)
 }
 
-// 初始化主题
 applyTheme(currentTheme.value)
 
-/** 动画起点：优先点击/触摸坐标，回退到按钮中心（手机端更稳） */
-function getTransitionOrigin(event) {
-  const touch = event?.touches?.[0] || event?.changedTouches?.[0]
-  if (touch && Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) {
-    return { x: touch.clientX, y: touch.clientY }
-  }
+/** 动画起点：支持传入触摸/点击事件，也支持 ThemeToggle 传入的按钮元素。 */
+function getTransitionOrigin(source) {
+  let x = 0, y = 0
 
-  if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-    return { x: event.clientX, y: event.clientY }
+  // 1. 如果有触摸点坐标，优先使用
+  const touch = source?.touches?.[0] || source?.changedTouches?.[0]
+  if (touch && typeof touch.clientX === 'number' && typeof touch.clientY === 'number' && (touch.clientX !== 0 || touch.clientY !== 0)) {
+    x = touch.clientX
+    y = touch.clientY
   }
-
-  const el = event?.currentTarget
-  if (el?.getBoundingClientRect) {
-    const rect = el.getBoundingClientRect()
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
+  // 2. 如果是鼠标/指针事件，使用其坐标（排除合成事件的 0,0）
+  else if (source && typeof source.clientX === 'number' && typeof source.clientY === 'number' && (source.clientX !== 0 || source.clientY !== 0)) {
+    x = source.clientX
+    y = source.clientY
+  }
+  // 3. 回退到元素本身的位置
+  else {
+    const el = source instanceof Element ? source : (source?.currentTarget || source?.target)
+    if (el?.getBoundingClientRect) {
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        x = rect.left + rect.width / 2
+        y = rect.top + rect.height / 2
+      }
     }
   }
 
-  const vw = window.visualViewport?.width ?? window.innerWidth
-  const vh = window.visualViewport?.height ?? window.innerHeight
-  return { x: vw / 2, y: vh / 2 }
+  // 4. 默认屏幕中心
+  if (x === 0 && y === 0) {
+    const vw = window.visualViewport?.width ?? window.innerWidth
+    const vh = window.visualViewport?.height ?? window.innerHeight
+    x = vw / 2
+    y = vh / 2
+  }
+
+  // 关键修复：移动端（特别是 Safari）对于 clipPath 动画的坐标不能带有小数，否则会导致解析失败从而从 0,0 开始扩散
+  return { x: Math.round(x), y: Math.round(y) }
 }
 
 function getViewportSize() {
-  // 手机端地址栏伸缩时 visualViewport 更准
-  const vv = window.visualViewport
+  const viewport = window.visualViewport
   return {
-    width: vv?.width ?? window.innerWidth,
-    height: Math.max(window.innerHeight, vv?.height ?? 0)
+    width: viewport?.width ?? window.innerWidth,
+    height: Math.max(window.innerHeight, viewport?.height ?? 0)
   }
 }
 
 export function useTheme() {
-  const toggleTheme = (event) => {
-    const isDark = currentTheme.value === 'dark'
-    const nextTheme = isDark ? 'light' : 'dark'
+  const toggleTheme = (source) => {
+    const nextTheme = currentTheme.value === 'dark' ? 'light' : 'dark'
 
-    // 仅在不支持 API 或系统要求减少动效时跳过圆形过渡
-    if (
-      !document.startViewTransition ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       currentTheme.value = nextTheme
       applyTheme(nextTheme)
       return
     }
 
-    const { x, y } = getTransitionOrigin(event)
+    if (!document.startViewTransition) {
+      currentTheme.value = nextTheme
+      applyTheme(nextTheme)
+      return
+    }
+
+    // 判断是否为移动端
+    const isMobile = window.matchMedia('(max-width: 768px), (pointer: coarse)').matches
+
+    if (isMobile) {
+      // 手机端：不添加任何 CSS class，直接利用原生 startViewTransition 极度丝滑的默认交叉淡入淡出 (Cross-fade) 动画
+      // 这能彻底避免 Safari Mobile 对坐标解析混乱导致的“总是从左上角开始扩散”的问题，也避免了各种奇葩白屏崩溃
+      document.documentElement.classList.remove('theme-transition-circle')
+      document.startViewTransition(() => {
+        currentTheme.value = nextTheme
+        applyTheme(nextTheme)
+      })
+      return
+    }
+
+    // 电脑端：加上特有 class，执行以点击位置为圆心的扩散动画
+    document.documentElement.classList.add('theme-transition-circle')
+    const { x, y } = getTransitionOrigin(source)
     const { width, height } = getViewportSize()
     const endRadius = Math.hypot(
       Math.max(x, width - x),
       Math.max(y, height - y)
     )
-
-    // 手机端稍慢一点，圆形扩散更顺滑
-    const isMobile = window.matchMedia('(max-width: 768px), (pointer: coarse)').matches
-    const duration = isMobile ? 550 : 400
+    const duration = 400
 
     const transition = document.startViewTransition(() => {
       currentTheme.value = nextTheme
@@ -89,9 +122,15 @@ export function useTheme() {
           pseudoElement: '::view-transition-new(root)'
         }
       )
-    }).catch(() => {
-      // ready 被中断时主题已切完，忽略即可
-    })
+    }).catch(() => {})
+
+    transition.finished
+      .then(() => {
+        document.documentElement.classList.remove('theme-transition-circle')
+      })
+      .catch(() => {
+        document.documentElement.classList.remove('theme-transition-circle')
+      })
   }
 
   return {

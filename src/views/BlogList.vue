@@ -297,7 +297,6 @@ onUnmounted(() => {
 
     <!-- 顶部栏 -->
     <header class="header">
-      <h1>afinit blog</h1>
       <div class="header-actions">
         <a href="mailto:afinit@afinit.top" class="contact-link" title="afinit@afinit.top">联系作者</a>
         <ThemeToggle />
@@ -518,12 +517,11 @@ onUnmounted(() => {
 .header {
   margin-bottom: 50px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 20px;
 }
-.header h1 { font-size: 24px; font-weight: 600; color: var(--text-primary); margin: 0; letter-spacing: -0.5px; }
 .header-actions { display: flex; align-items: center; gap: 16px; }
 
 .contact-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; transition: color 0.2s; }
@@ -662,9 +660,8 @@ onUnmounted(() => {
     gap: 12px;
     margin-bottom: 28px;
     padding-bottom: 16px;
-    align-items: flex-start;
+    align-items: center;
   }
-  .header h1 { font-size: 20px; }
   .header-actions {
     width: 100%;
     flex-wrap: wrap;

@@ -1,17 +1,26 @@
 <script setup>
+import { ref } from 'vue'
 import { useTheme } from '../composables/useTheme.js'
+
 const { currentTheme, toggleTheme } = useTheme()
+const btnRef = ref(null)
+
+function onToggle(event) {
+  // 直接传递事件对象，useTheme.js 会尝试读取 clientX/clientY 坐标
+  // 如果坐标异常，会自动 fallback 到元素的 getBoundingClientRect
+  toggleTheme(event)
+}
 </script>
 
 <template>
   <button
+    ref="btnRef"
     type="button"
     class="theme-toggle-btn"
-    @click="toggleTheme($event)"
+    @click="onToggle"
     :title="currentTheme === 'dark' ? '切换浅色' : '切换深色'"
     :aria-label="currentTheme === 'dark' ? '切换浅色' : '切换深色'"
   >
-    <!-- Sun icon for dark mode (click to switch to light) -->
     <svg v-if="currentTheme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="5"></circle>
       <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -23,7 +32,6 @@ const { currentTheme, toggleTheme } = useTheme()
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
       <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
     </svg>
-    <!-- Moon icon for light mode (click to switch to dark) -->
     <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
     </svg>
@@ -47,7 +55,7 @@ const { currentTheme, toggleTheme } = useTheme()
   min-width: 40px;
   min-height: 40px;
   border-radius: 50% !important;
-  transition: transform 0.3s, color 0.3s, background 0.2s;
+  transition: transform 0.3s, color 0.3s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
