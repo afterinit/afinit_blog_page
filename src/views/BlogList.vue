@@ -6,12 +6,17 @@ import { registerHomeRefresh } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { removeToken, hasAuthSession } from '../utils/auth.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
-import { assertApiSuccess } from '../utils/apiResponse.js'
-import request, { AuthError } from '../utils/request.js'
+import { useTheme } from '../composables/useTheme.js'
+import ThemeToggle from '../components/ThemeToggle.vue'
+import { AuthError } from '../utils/request.js'
+import { blogApi } from '../api/blog.js'
+import { userApi } from '../api/user.js'
+import { adminApi } from '../api/admin.js'
 
 defineOptions({ name: 'BlogList' })
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+const { currentTheme, toggleTheme } = useTheme()
+
 
 const router = useRouter()
 const {
@@ -46,12 +51,8 @@ async function fetchPosts(silent = false) {
   if (!silent) postsLoading.value = true
   postsError.value   = ''
   try {
-    const url = currentTab.value === 'public'
-      ? `${API_BASE}/blog?page=${postsPage.value}&size=${postsSize.value}`
-      : `${API_BASE}/blog/private?page=${postsPage.value}&size=${postsSize.value}`
-    const response = await request(url)
-    const res = await response.json()
-    assertApiSuccess(response, res, [30041], '文章列表加载失败')
+    const isPrivate = currentTab.value === 'private'
+    const res = await blogApi.getBlogList(postsPage.value, postsSize.value, isPrivate)
     const data = res.data
     posts.value = Array.isArray(data) ? data : (data?.records ?? [])
     postsTotal.value = data?.total || 0
@@ -96,16 +97,9 @@ async function fetchAdminUsers() {
   adminUsersLoading.value = true
   adminUsersError.value = ''
   try {
-    const url = new URL(`${API_BASE}/admin`)
-    url.searchParams.append('page', adminUserPage.value)
-    url.searchParams.append('size', adminUserSize.value)
-    
-    const response = await request(url.toString())
-    const res = await response.json()
-    assertApiSuccess(response, res, [], '获取用户列表失败')
-    
-    adminUsers.value = res.data.records || res.data.items || []
-    adminUserTotal.value = res.data.total || 0
+    const res = await adminApi.getUsers(adminUserPage.value, adminUserSize.value)
+    adminUsers.value = res.data?.records || res.data?.items || res.data || []
+    adminUserTotal.value = res.data?.total || 0
   } catch (err) {
     if (!err.isAuthError) adminUsersError.value = err.message || '获取用户列表失败'
   } finally {
@@ -122,19 +116,11 @@ function changeAdminUserPage(p) {
 function deleteAdminUser(user) {
   showConfirm(`确定要注销用户 ${user.id || user.nickname} 吗？此操作不可逆。`, async () => {
     try {
-      const response = await request(`${API_BASE}/user/${user.id}`, {
-        method: 'DELETE'
-      })
-      const res = await response.json()
-      if (response.ok && String(res.code).endsWith('1')) {
-        showAlert('注销成功！')
-        fetchAdminUsers()
-      } else {
-        const msg = res.msg || res.message || '注销失败'
-        showAlert(`注销失败：${msg}`)
-      }
+      await userApi.deleteUser(user.id)
+      showAlert('注销成功！')
+      fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`网络错误：${err.message}`)
+      if (!err.isAuthError) showAlert(`注销失败：${err.message}`)
     }
   })
 }
@@ -146,19 +132,11 @@ function blockAdminUser(user) {
 
   showConfirm(`确定要${actionName}用户 ${user.id || user.nickname} 吗？`, async () => {
     try {
-      const response = await request(`${API_BASE}/admin/${user.id}?status=${targetStatus}`, {
-        method: 'PUT'
-      })
-      const res = await response.json()
-      if (response.ok && String(res.code).endsWith('1')) {
-        showAlert(`${actionName}成功！`)
-        fetchAdminUsers()
-      } else {
-        const msg = res.msg || res.message || `${actionName}失败`
-        showAlert(`${actionName}失败：${msg}`)
-      }
+      await adminApi.updateUserStatus(user.id, targetStatus)
+      showAlert(`${actionName}成功！`)
+      fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`网络错误：${err.message}`)
+      if (!err.isAuthError) showAlert(`${actionName}失败：${err.message}`)
     }
   })
 }
@@ -194,22 +172,12 @@ function useEditAdminUser() {
       if (form.email.trim()) body.email = form.email.trim()
       if (form.password) body.password = SHA256(form.password).toString()
 
-      const response = await request(`${API_BASE}/user/info`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      const res = await response.json()
-      if (response.ok && String(res.code).endsWith('1')) {
-        showAlert('修改成功！')
-        show.value = false
-        fetchAdminUsers()
-      } else {
-        const msg = res.msg || res.message || '修改失败'
-        showAlert(`修改失败：${msg}`)
-      }
+      await userApi.updateUserInfo(body)
+      showAlert('修改成功！')
+      show.value = false
+      fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`网络错误：${err.message}`)
+      if (!err.isAuthError) showAlert(`修改失败：${err.message}`)
     } finally {
       loading.value = false
     }
@@ -227,47 +195,24 @@ const editAdminUser = useEditAdminUser()
 
 async function approvePost(id) {
   try {
-    const response = await request(`${API_BASE}/admin/toPublic/${id}`, {
-      method: 'PUT'
-    })
-    const res = await response.json()
-    if (response.ok && String(res.code) === '30031') {
-      // 立即无感移除该项，并静默刷新列表
-      posts.value = posts.value.filter(p => p.id !== id)
-      fetchPosts(true)
-      
-      showAlert(res.msg || res.message || '更新成功！')
-    } else {
-      const msg = res.msg || res.message || '审核失败'
-      showAlert(`审核失败：${msg}`)
-    }
+    const res = await adminApi.publishBlog(id)
+    posts.value = posts.value.filter(p => p.id !== id)
+    fetchPosts(true)
+    showAlert(res.msg || res.message || '更新成功！')
   } catch (err) {
-    if (!err.isAuthError) {
-      showAlert(`网络错误：${err.message}`)
-    }
+    if (!err.isAuthError) showAlert(`审核失败：${err.message}`)
   }
 }
 
 function deletePost(id) {
   showConfirm('确定要删除这篇文章吗？此操作不可恢复。', async () => {
     try {
-      const response = await request(`${API_BASE}/blog/${id}`, {
-        method: 'DELETE'
-      })
-      const res = await response.json()
-      // 判断成功状态码是否以 1 结尾
-      if (response.ok && String(res.code).endsWith('1')) {
-        posts.value = posts.value.filter(p => p.id !== id)
-        fetchPosts(true)
-        showAlert(res.msg || res.message || '删除成功！')
-      } else {
-        const msg = res.msg || res.message || '删除失败'
-        showAlert(`删除失败：${msg}`)
-      }
+      const res = await blogApi.deleteBlog(id)
+      posts.value = posts.value.filter(p => p.id !== id)
+      fetchPosts(true)
+      showAlert(res.msg || res.message || '删除成功！')
     } catch (err) {
-      if (!err.isAuthError) {
-        showAlert(`网络错误：${err.message}`)
-      }
+      if (!err.isAuthError) showAlert(`删除失败：${err.message}`)
     }
   })
 }
@@ -352,6 +297,7 @@ onUnmounted(() => {
       <h1>afinit blog</h1>
       <div class="header-actions">
         <a href="mailto:afinit@afinit.top" class="contact-link" title="afinit@afinit.top">联系作者</a>
+        <ThemeToggle />
         <template v-if="isLoggedIn">
           <!-- 发布文章按钮 -->
           <div class="user-menu" @click="router.push('/upload')" style="padding: 5px 10px;">
@@ -403,7 +349,9 @@ onUnmounted(() => {
             </Transition>
           </div>
         </template>
-        <button v-else class="btn btn-outline" @click="router.push('/login')">登录</button>
+        <template v-else>
+          <button class="btn btn-outline" @click="router.push('/login')">登录</button>
+        </template>
       </div>
     </header>
 
@@ -448,13 +396,13 @@ onUnmounted(() => {
                   </div>
                 </td>
                 <td>
-                  <div style="font-weight: 500; color: #111;">{{ user.nickname || '未设置昵称' }}</div>
-                  <div style="font-size: 12px; color: #888; margin-top: 4px;">@{{ user.username || '—' }}</div>
+                  <div style="font-weight: 500; color: var(--text-primary);">{{ user.nickname || '未设置昵称' }}</div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">@{{ user.username || '—' }}</div>
                 </td>
-                <td>{{ user.email || '—' }}</td>
+                <td style="color: var(--text-secondary);">{{ user.email || '—' }}</td>
                 <td>{{ formatTime(user.createTime) }}</td>
                 <td>
-                  <span :style="{ color: user.status !== 0 ? '#2e7d32' : '#d32f2f' }">
+                  <span :style="{ color: user.status !== 0 ? 'var(--success-color)' : 'var(--danger-color)' }">
                     {{ user.status !== 0 ? '正常' : '已停用' }}
                   </span>
                 </td>
@@ -569,71 +517,72 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 20px;
 }
-.header h1 { font-size: 24px; font-weight: 600; color: #111; margin: 0; letter-spacing: -0.5px; }
+.header h1 { font-size: 24px; font-weight: 600; color: var(--text-primary); margin: 0; letter-spacing: -0.5px; }
 .header-actions { display: flex; align-items: center; gap: 16px; }
 
-.contact-link { font-size: 14px; color: #555; text-decoration: none; transition: color 0.2s; }
-.contact-link:hover { color: #111; text-decoration: underline; }
+.contact-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; transition: color 0.2s; }
+.contact-link:hover { color: var(--text-primary); }
 
-.btn { padding: 6px 14px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-.btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
-.btn-outline:hover { background-color: #f5f5f5; border-color: #111; }
+.btn { padding: 6px 14px; background-color: var(--text-primary); color: var(--bg-primary); border: 1px solid var(--text-primary); font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.btn:hover:not(:disabled) { background-color: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-outline { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
+.btn-outline:hover:not(:disabled) { background-color: var(--bg-hover); border-color: var(--text-primary); }
 
-.status-msg { text-align: center; color: #999; margin-top: 100px; font-size: 14px; }
-.status-msg.error { color: #d32f2f; }
+.status-msg { text-align: center; color: var(--text-secondary); margin-top: 100px; font-size: 14px; }
+.status-msg.error { color: var(--danger-color); }
 
-.tabs-container { margin-bottom: 24px; border-bottom: 1px solid #eaeaea; }
+.tabs-container { margin-bottom: 0; border-bottom: 1px solid var(--border-color); }
 .tabs { display: flex; gap: 24px; }
-.tab-btn { background: none; border: none; padding: 0 0 12px; font-size: 15px; color: #888; cursor: pointer; position: relative; font-weight: 500; transition: color 0.2s; }
-.tab-btn:hover { color: #111; }
-.tab-btn.active { color: #111; }
-.tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background-color: #111; }
+.tab-btn { background: none; border: none; padding: 0 0 12px; font-size: 15px; color: var(--text-secondary); cursor: pointer; position: relative; font-weight: 500; transition: color 0.2s; }
+.tab-btn:hover { color: var(--text-primary); }
+.tab-btn.active { color: var(--text-primary); }
+.tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background-color: var(--text-primary); }
 
-.post-list { display: flex; flex-direction: column; gap: 20px; }
+.post-list { display: flex; flex-direction: column; gap: 0; }
 .post-card {
-  padding: 16px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 24px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: #fafafa;
+  background-color: transparent;
 }
-.post-card--self { border: 2px solid #111; }
-.post-card:hover { background-color: #f5f5f5; border-color: #eaeaea; transform: translateY(-2px); }
-.post-card--self:hover { border-color: #111; background-color: #f5f5f5; }
-.post-title  { font-size: 18px; font-weight: 600; color: #111; margin: 0 0 6px; }
-.post-summary { font-size: 14px; color: #555; line-height: 1.5; margin: 0 0 12px; }
-.post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #999; }
+.post-card--self { border-left: 2px solid var(--text-primary); }
+.post-card:hover { background-color: var(--bg-hover); }
+.post-card--self:hover { background-color: var(--bg-hover); }
+.post-title  { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; }
+.post-summary { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 16px; }
+.post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-secondary); opacity: 0.8; }
 .inline-actions { display: flex; gap: 8px; margin-left: auto; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-xs { padding: 2px 8px; font-size: 12px; border-radius: 4px; }
-.btn-success { color: #2e7d32; border-color: #a5d6a7; }
-.btn-success:hover { background-color: #e8f5e9; border-color: #2e7d32; color: #2e7d32; }
-.btn-danger { color: #d32f2f; border-color: #ffcdd2; }
-.btn-danger:hover { background-color: #ffebee; border-color: #d32f2f; color: #d32f2f; }
+.btn-xs { padding: 2px 8px; font-size: 12px; }
+.btn-success { color: var(--success-color); border-color: var(--success-color); }
+.btn-success:hover { background-color: rgba(82, 196, 26, 0.1); border-color: var(--success-color); color: var(--success-color); }
+.btn-danger { color: var(--danger-color); border-color: var(--danger-color); }
+.btn-danger:hover { background-color: rgba(255, 77, 79, 0.1); border-color: var(--danger-color); color: var(--danger-color); }
 .btn-warning { color: #ed6c02; border-color: #ffcc80; }
-.btn-warning:hover { background-color: #fff3e0; border-color: #ed6c02; color: #ed6c02; }
+.btn-warning:hover { background-color: rgba(237, 108, 2, 0.1); border-color: #ed6c02; color: #ed6c02; }
 
 /* 弹窗样式 */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
-.modal-content { background: #fff; padding: 32px; border-radius: 8px; width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
-.modal-content h3 { margin: 0 0 12px 0; font-size: 18px; color: #111; font-weight: 600; }
-.modal-content p { margin: 0 0 24px 0; font-size: 14px; color: #555; line-height: 1.5; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
+.modal-content { background: var(--bg-secondary); padding: 32px; width: 320px; border: 1px solid var(--border-color); }
+.modal-content h3 { margin: 0 0 12px 0; font-size: 18px; color: var(--text-primary); font-weight: 600; }
+.modal-content p { margin: 0 0 24px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
 .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
 
 .loading-overlay {
   position: fixed; inset: 0;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(2px);
   display: flex; justify-content: center; align-items: center;
   z-index: 9999;
 }
 .spinner {
   width: 36px; height: 36px;
-  border: 3px solid #e0e0e0; border-top-color: #111;
+  border: 3px solid #333; border-top-color: var(--text-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -646,58 +595,60 @@ onUnmounted(() => {
   position: relative;
   display: inline-flex; align-items: center; gap: 7px;
   padding: 5px 10px 5px 5px;
-  border-radius: 6px; border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   cursor: pointer; user-select: none;
   transition: background 0.2s, border-color 0.2s;
 }
-.user-menu:hover { background: #f5f5f5; border-color: #d0d0d0; }
-.tools-btn-label { font-size: 13px; color: #111; font-weight: 500; padding-left: 5px; }
+.user-menu:hover { background: var(--bg-hover); border-color: var(--text-secondary); }
+.tools-btn-label { font-size: 13px; color: var(--text-primary); font-weight: 500; padding-left: 5px; }
 
 .user-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: #111; overflow: hidden; flex-shrink: 0;
+  width: 28px; height: 28px;
+  background: var(--bg-secondary); overflow: hidden; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
 }
-.avatar-img    { width: 100%; height: 100%; object-fit: cover; }
-.avatar-letter { color: #fff; font-size: 12px; font-weight: 600; }
+.avatar-img    { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.avatar-letter { color: var(--text-primary); font-size: 12px; font-weight: 600; }
 
 .user-nickname {
-  font-size: 13px; color: #111; font-weight: 500;
+  font-size: 13px; color: var(--text-primary); font-weight: 500;
   max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.dropdown-caret { color: #aaa; display: flex; align-items: center; transition: transform 0.2s; }
+.dropdown-caret { color: var(--text-secondary); display: flex; align-items: center; transition: transform 0.2s; }
 .dropdown-caret.rotated { transform: rotate(180deg); }
 
 .dropdown-menu {
   position: absolute; top: calc(100% + 6px); right: 0;
-  background: #fff; border: 1px solid #ececec; border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.09); min-width: 130px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  min-width: 130px;
   z-index: 200; overflow: hidden;
 }
-.dropdown-item { padding: 10px 16px; font-size: 13px; color: #333; cursor: pointer; transition: background 0.15s; white-space: nowrap; }
-.dropdown-item:hover { background: #f5f5f5; }
-.dropdown-item.danger { color: #d32f2f; }
-.dropdown-item.danger:hover { background: #fff5f5; }
-.dropdown-divider { height: 1px; background: #f0f0f0; }
+.dropdown-item { padding: 10px 16px; font-size: 13px; color: var(--text-primary); cursor: pointer; transition: background 0.15s; white-space: nowrap; }
+.dropdown-item:hover { background: var(--bg-hover); }
+.dropdown-item.danger { color: var(--danger-color); }
+.dropdown-item.danger:hover { background: rgba(255, 77, 79, 0.1); }
+.dropdown-divider { height: 1px; background: var(--border-color); }
 
 .dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px); }
 
-.input-field { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
-.input-field:focus { border-color: #111; outline: none; }
+.input-field { width: 100%; padding: 8px 12px; background: transparent; color: var(--text-primary); border: 1px solid var(--border-color); font-size: 14px; box-sizing: border-box; }
+.input-field:focus { border-color: var(--text-primary); outline: none; }
 
 /* 用户管理表格样式 */
-.table-container { overflow-x: auto; background: #fff; border-radius: 8px; border: 1px solid #eaeaea; padding: 20px; }
+.table-container { overflow-x: auto; background: transparent; border: 1px solid var(--border-color); padding: 20px; }
 .user-table { width: 100%; border-collapse: collapse; }
-.user-table th { padding: 12px 16px; text-align: left; background: #f9f9f9; color: #555; font-weight: 600; font-size: 14px; border-bottom: 2px solid #eaeaea; white-space: nowrap; }
-.user-table td { padding: 12px 16px; border-bottom: 1px solid #eaeaea; color: #333; font-size: 14px; vertical-align: middle; white-space: nowrap; }
-.table-user-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #333, #666); color: #fff; font-weight: 600; font-size: 14px; flex-shrink: 0; }
-.table-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.user-table th { padding: 12px 16px; text-align: left; background: var(--bg-secondary); color: var(--text-secondary); font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+.user-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); font-size: 14px; vertical-align: middle; white-space: nowrap; }
+.table-user-avatar { width: 32px; height: 32px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 50%; color: var(--text-primary); font-weight: 600; font-size: 14px; flex-shrink: 0; }
+.table-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .table-avatar-letter { display: inline-block; line-height: 1; }
-.empty-state { text-align: center; color: #999; padding: 40px !important; }
+.empty-state { text-align: center; color: var(--text-secondary); padding: 40px !important; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; }
-.page-info { font-size: 14px; color: #555; }
-.btn-ghost { background: transparent; color: #555; border-color: #ddd; }
-.btn-ghost:hover:not(:disabled) { background: #f5f5f5; border-color: #bbb; color: #111; }
+.page-info { font-size: 14px; color: var(--text-secondary); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border-color); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--text-secondary); color: var(--text-primary); }
 </style>

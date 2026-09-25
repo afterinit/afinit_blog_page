@@ -3,8 +3,7 @@ import { reactive, ref, computed, nextTick, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
-import request from '../utils/request.js'
-import { assertApiSuccess } from '../utils/apiResponse.js'
+import { authApi } from '../api/auth.js'
 
 const router = useRouter()
 
@@ -95,14 +94,7 @@ async function handleGetCode() {
 async function sendVerificationCode(cfToken) {
   isSending.value = true
   try {
-    const apiUrl   = import.meta.env.VITE_API_BASE_URL
-    const response = await request(`${apiUrl}/user/code`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ cfToken, username: form.username.trim() }),
-    })
-    const res = await response.json()
-    assertApiSuccess(response, res, [20502], '验证码发送失败')
+    await authApi.sendCode({ cfToken, username: form.username.trim() })
 
     closeTurnstileModal()
     startCountdown()
@@ -135,24 +127,14 @@ async function handleResetPassword() {
 
   isSubmitting.value = true
   try {
-    const apiUrl   = import.meta.env.VITE_API_BASE_URL
-    const response = await request(`${apiUrl}/user/password`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        username: username,
-        password: SHA256(form.password).toString(),
-        code:     form.code,
-      }),
-    })
-    const res = await response.json()
+    const res = await authApi.resetPassword(
+      username,
+      SHA256(form.password).toString(),
+      form.code
+    )
     
-    if (response.ok && String(res.code).endsWith('1')) {
-      showSuccess(res.msg || res.message || '密码修改成功！即将返回登录页…')
-      setTimeout(() => router.push('/login'), 1500)
-    } else {
-      showError(res.msg || res.message || '密码修改失败')
-    }
+    showSuccess(res.msg || res.message || '密码修改成功！即将返回登录页…')
+    setTimeout(() => router.push('/login'), 1500)
   } catch (err) {
     showError(err.message || '修改失败，请稍后重试')
   } finally {
@@ -276,14 +258,15 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--bg-primary);
   position: relative;
 }
 
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--bg-primary);
+  opacity: 0.75;
   backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
@@ -294,8 +277,8 @@ onUnmounted(() => {
 .spinner {
   width: 36px;
   height: 36px;
-  border: 3px solid #e0e0e0;
-  border-top-color: #111;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--text-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -310,10 +293,9 @@ onUnmounted(() => {
 .fade-leave-to { opacity: 0; }
 
 .forgot-box {
-  background: #fff;
+  background: var(--bg-secondary);
   padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-color);
   width: 100%;
   max-width: 400px;
 }
@@ -321,7 +303,7 @@ onUnmounted(() => {
 .forgot-box h2 {
   margin: 0 0 24px;
   text-align: center;
-  color: #111;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -333,27 +315,28 @@ onUnmounted(() => {
   display: block;
   margin-bottom: 7px;
   font-size: 14px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid var(--border-color);
   font-size: 14px;
   box-sizing: border-box;
   outline: none;
+  background: transparent;
+  color: var(--text-primary);
   transition: border-color 0.2s;
 }
 
 .form-group input:focus {
-  border-color: #111;
+  border-color: var(--text-primary);
 }
 
 .form-group input:disabled {
-  background: #f9f9f9;
-  color: #aaa;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .code-row {
@@ -369,26 +352,24 @@ onUnmounted(() => {
 .feedback-msg {
   margin: 0 0 16px;
   padding: 8px 12px;
-  border-radius: 4px;
   font-size: 13px;
   text-align: center;
 }
 
 .error-msg {
-  background: #fff5f5;
-  color: #d32f2f;
-  border: 1px solid #fecaca;
+  background: rgba(211, 47, 47, 0.1);
+  color: var(--danger-color);
+  border: 1px solid var(--danger-color);
 }
 
 .success-msg {
-  background: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background: rgba(46, 125, 50, 0.1);
+  color: var(--success-color);
+  border: 1px solid var(--success-color);
 }
 
 .btn {
   border: none;
-  border-radius: 4px;
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.2s, opacity 0.2s, border-color 0.2s;
@@ -402,57 +383,57 @@ onUnmounted(() => {
 .code-btn {
   flex-shrink: 0;
   padding: 10px 14px;
-  background-color: #111;
-  color: #fff;
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
   white-space: nowrap;
   font-size: 13px;
 }
 
 .code-btn:hover:not(:disabled) {
-  background-color: #333;
+  background-color: var(--accent-hover);
 }
 
 .code-btn:disabled {
-  background-color: #999;
+  background-color: var(--text-secondary);
 }
 
 .main-btn {
   width: 100%;
   padding: 12px;
-  background-color: #111;
-  color: #fff;
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
   font-size: 15px;
   margin-bottom: 10px;
 }
 
 .main-btn:hover:not(:disabled) {
-  background-color: #333;
+  background-color: var(--accent-hover);
 }
 
 .main-btn:disabled {
-  background-color: #999;
+  background-color: var(--text-secondary);
 }
 
 .secondary-btn {
   width: 100%;
   padding: 12px;
   background-color: transparent;
-  color: #555;
-  border: 1px solid #ddd;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   font-size: 14px;
 }
 
 .secondary-btn:hover:not(:disabled) {
-  background-color: #f5f5f5;
-  border-color: #aaa;
-  color: #111;
+  background-color: var(--bg-hover);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 /* ── Turnstile Modal ────────────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
@@ -461,11 +442,11 @@ onUnmounted(() => {
 }
 
 .modal-card {
-  background: #fff;
-  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   padding: 24px;
   width: 340px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .modal-header {
@@ -475,7 +456,7 @@ onUnmounted(() => {
   margin-bottom: 20px;
   font-size: 15px;
   font-weight: 600;
-  color: #111;
+  color: var(--text-primary);
 }
 
 .modal-close {
@@ -483,15 +464,14 @@ onUnmounted(() => {
   border: none;
   font-size: 16px;
   cursor: pointer;
-  color: #888;
+  color: var(--text-secondary);
   padding: 2px 6px;
-  border-radius: 4px;
   transition: background 0.15s, color 0.15s;
 }
 
 .modal-close:hover {
-  background: #f0f0f0;
-  color: #111;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -503,16 +483,15 @@ onUnmounted(() => {
 .turnstile-skeleton {
   width: 300px;
   height: 65px;
-  border-radius: 6px;
   overflow: hidden;
-  background: #e8e8e8;
+  background: var(--bg-hover);
   position: relative;
 }
 
 .skeleton-shimmer {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
   animation: shimmer 1.4s infinite;
 }
 
@@ -525,7 +504,7 @@ onUnmounted(() => {
   margin: 16px 0 0;
   text-align: center;
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary);
 }
 
 .modal-fade-enter-active {

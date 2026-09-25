@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import request, { AuthError } from '../../utils/request.js'
+import { projectApi } from '../../api/project.js'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 
@@ -150,41 +150,13 @@ const generateCustomProject = async () => {
 
     isGenerating.value = true
     try {
-    const apiUrl = `${import.meta.env.VITE_API_BASE_URL || ''}/generate`
-    
-    const response = await request(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(generatorData),
-      responseType: 'blob'
-    })
-
-    // request() wrapper returns { ok, status, headers: { get() }, blob() }
-    const blobData = await response.blob()
-
-    // Extract filename from header
-    let filename = 'project.zip'
-    const disposition = response.headers.get('content-disposition')
-    if (disposition) {
-      const utf8FilenameRegex = /filename\*=UTF-8''([^;\n]*)/;
-      const matchesUtf8 = utf8FilenameRegex.exec(disposition);
-      if (matchesUtf8 != null && matchesUtf8[1]) {
-        filename = decodeURIComponent(matchesUtf8[1]);
-      } else {
-        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/
-        const matches = filenameRegex.exec(disposition)
-        if (matches != null && matches[1]) { 
-          filename = matches[1].replace(/['"]/g, '')
-        }
-      }
-    }
+    const { blob: blobData, filename: rawFilename } = await projectApi.generate(generatorData)
+    const filename = decodeURIComponent(rawFilename)
 
     const url = window.URL.createObjectURL(new Blob([blobData]))
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', decodeURIComponent(filename))
+    link.setAttribute('download', filename)
     document.body.appendChild(link)
     link.click()
     link.parentNode.removeChild(link)

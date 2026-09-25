@@ -7,16 +7,18 @@ import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { hasAuthSession, isAccessTokenExpired } from '../utils/auth.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
-import { assertApiSuccess } from '../utils/apiResponse.js'
-import request from '../utils/request.js'
 import AvatarUpload from '../components/AvatarUpload.vue'
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+import { useTheme } from '../composables/useTheme.js'
+import ThemeToggle from '../components/ThemeToggle.vue'
+import { userApi } from '../api/user.js'
+import { authApi } from '../api/auth.js'
+import { blogApi } from '../api/blog.js'
 
 // ─── 基础 ──────────────────────────────────────────────────────────────────────
 
 const router = useRouter()
 const { userInfo, fetchUserInfo, patchUserInfo } = useUserInfo()
+const { currentTheme, toggleTheme } = useTheme()
 
 const pageLoading = ref(false)
 const pageError   = ref('')
@@ -54,13 +56,7 @@ function useEditNickname() {
 
     loading.value = true
     try {
-      const response = await request(`${API_BASE}/user/nickname`, {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ nickname: trimmed }),
-      })
-      const res = await response.json()
-      assertApiSuccess(response, res, [20041], '修改失败')
+      await userApi.updateNickname(trimmed)
       patchUserInfo({ nickname: trimmed })
       success.value = '修改成功'
       setTimeout(() => { show.value = false; success.value = '' }, 900)
@@ -144,13 +140,7 @@ function useEditInfo() {
   async function sendCode(cfToken) {
     isSending.value = true
     try {
-      const response = await request(`${API_BASE}/user/code`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ cfToken, to: userInfo.value.email }),
-      })
-      const res = await response.json()
-      assertApiSuccess(response, res, [20502], '验证码发送失败')
+      await authApi.sendCode({ cfToken, to: userInfo.value.email })
       closeTurnstile()
       startCountdown()
     } catch (e) {
@@ -212,14 +202,7 @@ function useEditInfo() {
       if (username)      body.username = username
       if (form.password) body.password = SHA256(form.password).toString()
 
-      const response = await request(`${API_BASE}/user/info`, {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
-      })
-      const res = await response.json()
-      assertApiSuccess(response, res, [20041], '修改失败')
-
+      await userApi.updateUserInfo(body)
       success.value = '修改成功'
       setTimeout(() => { show.value = false; success.value = '' }, 900)
     } catch (e) {
@@ -267,13 +250,8 @@ function useDeleteAccount() {
     loading.value = true
     error.value = ''
     try {
-      const response = await request(`${API_BASE}/user/${userInfo.value.id}`, {
-        method: 'DELETE'
-      })
-      const res = await response.json()
-      assertApiSuccess(response, res, [], '注销失败')
+      await userApi.deleteUser(userInfo.value.id)
       
-      // Success: clear info and redirect to login
       const { clearUserInfo } = useUserInfo()
       clearUserInfo()
       router.push('/login')
@@ -302,9 +280,7 @@ async function fetchPersonalPosts() {
   postsLoading.value = true
   postsError.value = ''
   try {
-    const response = await request(`${API_BASE}/blog/personal?page=${postsPage.value}&size=${postsSize.value}`)
-    const res = await response.json()
-    assertApiSuccess(response, res, [30041], '文章列表加载失败')
+    const res = await blogApi.getBlogList(postsPage.value, postsSize.value, true)
     const data = res.data
     personalPosts.value = data.records || []
     postsTotal.value = data.total || 0
@@ -373,7 +349,7 @@ onUnmounted(() => {
         返回
       </button>
       <span class="header-title">个人资料</span>
-      <div style="width: 60px"></div>
+      <ThemeToggle />
     </header>
 
     <div v-if="pageLoading" class="status-msg">正在加载...</div>
@@ -653,50 +629,50 @@ onUnmounted(() => {
 /* ── 导航 ─────────────────────────────────────────────────────────────────────── */
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;
+  margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);
 }
-.header-title { font-size: 16px; font-weight: 600; color: #111; }
+.header-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
 .back-btn {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 13px; color: #555; background: none; border: none;
+  font-size: 13px; color: var(--text-secondary); background: none; border: none;
   cursor: pointer; padding: 4px 0; transition: color 0.15s;
 }
-.back-btn:hover { color: #111; }
+.back-btn:hover { color: var(--text-primary); }
 
-.status-msg { text-align: center; color: #999; margin-top: 80px; font-size: 14px; }
-.status-msg.error { color: #d32f2f; }
+.status-msg { text-align: center; color: var(--text-secondary); margin-top: 80px; font-size: 14px; }
+.status-msg.error { color: var(--danger-color); }
 
 /* ── 头像 ─────────────────────────────────────────────────────────────────────── */
 .avatar-section { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
 .avatar-info    { display: flex; flex-direction: column; gap: 4px; }
-.user-name      { font-size: 20px; font-weight: 600; color: #111; }
-.user-username  { font-size: 13px; color: #666; font-weight: 500; }
-.user-id        { font-size: 12px; color: #aaa; }
+.user-name      { font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.user-username  { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.user-id        { font-size: 12px; color: var(--text-secondary); opacity: 0.6; }
 
 /* ── 分割线 ───────────────────────────────────────────────────────────────────── */
-.divider       { height: 1px; background: #f0f0f0; margin: 8px 0; }
-.divider-light { height: 1px; background: #f5f5f5; margin: 4px 0 12px; }
+.divider       { height: 1px; background: var(--border-color); margin: 8px 0; }
+.divider-light { height: 1px; background: var(--border-color); margin: 4px 0 12px; opacity: 0.5; }
 
 /* ── 信息列表 ─────────────────────────────────────────────────────────────────── */
 .info-list { margin: 0; padding: 12px 0; display: flex; flex-direction: column; }
 .info-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 0; border-bottom: 1px solid #f5f5f5;
+  padding: 14px 0; border-bottom: 1px solid var(--border-color);
 }
 .info-row:last-child { border-bottom: none; }
-.info-row dt { font-size: 13px; color: #888; flex-shrink: 0; }
-.info-row dd { font-size: 13px; color: #222; margin: 0; text-align: right; word-break: break-all; }
+.info-row dt { font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
+.info-row dd { font-size: 13px; color: var(--text-primary); margin: 0; text-align: right; word-break: break-all; }
 
 .info-dd-action { display: flex; align-items: center; gap: 12px; }
-.info-value     { color: #222; font-size: 13px; }
+.info-value     { color: var(--text-primary); font-size: 13px; }
 
 .edit-btn {
   flex-shrink: 0;
-  padding: 3px 10px; font-size: 12px; color: #555;
-  background: transparent; border: 1px solid #ddd; border-radius: 4px;
+  padding: 3px 10px; font-size: 12px; color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border-color);
   cursor: pointer; transition: all 0.15s;
 }
-.edit-btn:hover { background: #f5f5f5; border-color: #bbb; color: #111; }
+.edit-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── 操作入口 ─────────────────────────────────────────────────────────────────── */
 .action-group { padding-top: 20px; }
@@ -705,19 +681,18 @@ onUnmounted(() => {
 /* ── 按钮 ─────────────────────────────────────────────────────────────────────── */
 .btn {
   padding: 9px 20px;
-  background-color: #111; color: #fff;
-  border: 1px solid #111; border-radius: 4px;
+  background-color: var(--text-primary); color: var(--bg-primary);
+  border: 1px solid var(--text-primary);
   font-size: 13px; cursor: pointer; transition: all 0.2s;
 }
-.btn:hover:not(:disabled) { background-color: #333; border-color: #333; }
+.btn:hover:not(:disabled) { background-color: var(--accent-hover); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
-.btn-outline:hover:not(:disabled) { background-color: #f5f5f5; border-color: #111; }
-.btn-outline:hover:not(:disabled) { background-color: #f5f5f5; border-color: #111; }
-.btn-ghost { background: transparent; color: #555; border-color: #ddd; }
-.btn-ghost:hover:not(:disabled) { background: #f5f5f5; border-color: #bbb; color: #111; }
-.btn-danger { background-color: #d32f2f; color: #fff; border-color: #d32f2f; }
-.btn-danger:hover:not(:disabled) { background-color: #b71c1c; border-color: #b71c1c; }
+.btn-outline { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
+.btn-outline:hover:not(:disabled) { background-color: var(--bg-hover); border-color: var(--text-primary); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.btn-danger { background-color: var(--danger-color); color: #fff; border-color: var(--danger-color); }
+.btn-danger:hover:not(:disabled) { background-color: #ff7875; border-color: #ff7875; }
 
 /* 获取验证码按钮 */
 .code-btn {
@@ -728,73 +703,74 @@ onUnmounted(() => {
 
 /* ── Modal 通用 ───────────────────────────────────────────────────────────────── */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  position: fixed; inset: 0; background: rgba(0,0,0,.85);
   backdrop-filter: blur(2px); display: flex; justify-content: center;
   align-items: center; z-index: 999; padding: 20px;
 }
 .modal-box {
-  background: #fff; border-radius: 10px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
   width: 100%; max-width: 400px;
-  box-shadow: 0 16px 48px rgba(0,0,0,.14); overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,.5); overflow: hidden;
 }
 .modal-box-lg { max-width: 460px; }
 
 .modal-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 18px 24px 16px; border-bottom: 1px solid #f0f0f0;
-  font-size: 15px; font-weight: 600; color: #111;
+  padding: 18px 24px 16px; border-bottom: 1px solid var(--border-color);
+  font-size: 15px; font-weight: 600; color: var(--text-primary);
 }
 .modal-close {
-  background: none; border: none; color: #aaa;
+  background: none; border: none; color: var(--text-secondary);
   font-size: 14px; cursor: pointer; transition: color 0.15s; line-height: 1;
 }
-.modal-close:hover { color: #111; }
+.modal-close:hover { color: var(--text-primary); }
 .modal-body   { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow-y: auto; }
-.modal-footer { display: flex; gap: 10px; padding: 16px 24px 20px; border-top: 1px solid #f0f0f0; justify-content: flex-end; }
+.modal-footer { display: flex; gap: 10px; padding: 16px 24px 20px; border-top: 1px solid var(--border-color); justify-content: flex-end; }
 
 /* ── 表单元素 ─────────────────────────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label {
-  font-size: 13px; color: #555; font-weight: 500;
+  font-size: 13px; color: var(--text-secondary); font-weight: 500;
   display: flex; align-items: center; gap: 6px;
 }
-.field-hint  { font-size: 11px; color: #bbb; font-weight: 400; }
+.field-hint  { font-size: 11px; color: var(--text-secondary); opacity: 0.6; font-weight: 400; }
 
 .form-group input {
-  padding: 9px 12px; border: 1px solid #ddd; border-radius: 4px;
+  padding: 9px 12px; background: transparent; border: 1px solid var(--border-color);
+  color: var(--text-primary);
   font-size: 14px; outline: none; transition: border-color 0.2s;
   box-sizing: border-box; width: 100%;
 }
-.form-group input:focus    { border-color: #111; }
+.form-group input:focus    { border-color: var(--text-primary); }
 .form-group input:disabled,
-.input-disabled            { background: #fafafa; color: #bbb; cursor: not-allowed; }
+.input-disabled            { background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: not-allowed; }
 
 .code-row { display: flex; gap: 8px; }
 .code-row input { flex: 1; min-width: 0; }
 
-.form-error   { font-size: 13px; color: #d32f2f; margin: 0; }
-.form-success { font-size: 13px; color: #2e7d32; margin: 0; }
+.form-error   { font-size: 13px; color: var(--danger-color); margin: 0; }
+.form-success { font-size: 13px; color: var(--success-color); margin: 0; }
 
 /* ── Turnstile overlay（z-index 高于修改信息 Modal） ──────────────────────────── */
 .modal-backdrop-top {
-  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  position: fixed; inset: 0; background: rgba(0,0,0,.85);
   backdrop-filter: blur(4px); display: flex; justify-content: center;
   align-items: center; z-index: 1100;
 }
 .turnstile-card {
-  background: #fff; border-radius: 10px; padding: 0;
-  width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,.18); overflow: hidden;
+  background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 0;
+  width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,.5); overflow: hidden;
 }
 .turnstile-body  { display: flex; justify-content: center; padding: 20px 24px; min-height: 85px; }
-.turnstile-hint  { text-align: center; font-size: 12px; color: #999; padding: 0 24px 16px; margin: 0; }
+.turnstile-hint  { text-align: center; font-size: 12px; color: var(--text-secondary); padding: 0 24px 16px; margin: 0; }
 
 .turnstile-skeleton {
   width: 300px; height: 65px; border-radius: 6px;
-  overflow: hidden; background: #e8e8e8; position: relative;
+  overflow: hidden; background: #333; position: relative;
 }
 .skeleton-shimmer {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
   animation: shimmer 1.4s infinite;
 }
 @keyframes shimmer {
@@ -811,31 +787,32 @@ onUnmounted(() => {
 .modal-fade-enter-active { transition: opacity 0.2s, transform 0.2s; }
 .modal-fade-leave-active { transition: opacity 0.15s, transform 0.15s; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.96); }
+
 /* ── 我的文章 ─────────────────────────────────────────────────────────────────── */
-.section-title { font-size: 18px; font-weight: 600; color: #111; margin-bottom: 20px; }
-.post-list { display: flex; flex-direction: column; gap: 20px; }
+.section-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px; }
+.post-list { display: flex; flex-direction: column; gap: 0; }
 .post-card {
-  padding: 16px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 24px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: #fafafa;
+  background-color: transparent;
 }
-.post-card--published { border-color: transparent; }
-.post-card--published:hover { background-color: #f5f5f5; border-color: #eaeaea; transform: translateY(-2px); }
-.post-card--unpublished { border-color: #ffb74d; background-color: #fff8e1; }
-.post-card--unpublished:hover { border-color: #f57c00; transform: translateY(-2px); }
-.post-title  { font-size: 18px; font-weight: 600; color: #111; margin: 0 0 6px; display: flex; align-items: center; }
-.post-summary { font-size: 14px; color: #555; line-height: 1.5; margin: 0 0 12px; }
-.post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #999; }
+.post-card--published { border-color: var(--border-color); }
+.post-card--published:hover { background-color: var(--bg-hover); }
+.post-card--unpublished { border-left: 2px solid #ffb74d; background-color: rgba(255, 183, 77, 0.05); }
+.post-card--unpublished:hover { background-color: rgba(255, 183, 77, 0.1); }
+.post-title  { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; display: flex; align-items: center; }
+.post-summary { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 16px; }
+.post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-secondary); opacity: 0.8; }
 .status-tag {
-  color: #f57c00; font-size: 12px; border: 1px solid #ffb74d;
-  padding: 2px 6px; border-radius: 4px; margin-right: 8px; font-weight: 400;
+  color: #ffb74d; font-size: 12px; border: 1px solid #ffb74d;
+  padding: 2px 6px; margin-right: 8px; font-weight: 400;
 }
 
 /* 分页 */
 .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 30px; }
-.page-info { font-size: 14px; color: #555; }
+.page-info { font-size: 14px; color: var(--text-secondary); }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 </style>

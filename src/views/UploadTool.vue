@@ -2,13 +2,16 @@
 import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseMdToJson, processHtml, marked } from '../utils/mdParser.js'
-import { parseJsonSafe, extractDataIdFromJsonText } from '../utils/json.js'
-import { assertApiSuccess, getApiSuccessMessage } from '../utils/apiResponse.js'
 import { refreshHomePosts } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
-import request, { AuthError } from '../utils/request.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
+import { useTheme } from '../composables/useTheme.js'
+import ThemeToggle from '../components/ThemeToggle.vue'
+import { useUserInfo } from '../composables/useUserInfo.js'
+import { blogApi } from '../api/blog.js'
 const router = useRouter()
+const { currentTheme, toggleTheme } = useTheme()
+const { userInfo } = useUserInfo()
 const inputText = ref('')
 const fileInput = ref(null)
 const textareaRef = ref(null)
@@ -74,29 +77,21 @@ async function publishArticle() {
   }
   
   try {
-    const apiUrl = import.meta.env.VITE_API_BASE_URL;
-    const response = await request(`${apiUrl}/blog`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: articleData.value.title,
-        summary: articleData.value.summary,
-        content: articleData.value.rawContent
-      })
-    });
-    
-    const resText = await response.text()
-    const newId = extractDataIdFromJsonText(resText)
-    const res = parseJsonSafe(resText)
-    assertApiSuccess(response, res, [20011], '发布失败');
+    const res = await blogApi.createBlog(
+      articleData.value.title,
+      articleData.value.summary,
+      articleData.value.rawContent
+    )
 
     refreshHomePosts()
 
-    showAlert(getApiSuccessMessage(res, '发布成功！'), () => {
+    showAlert(res.msg || res.message || '发布成功！', () => {
+      const isAdmin = userInfo.value && userInfo.value.role === 1;
+      const query = isAdmin ? '' : '?type=private';
+      const newId = res.data;
+      
       if (newId) {
-        router.push(`/blog/${newId}?type=private`);
-      } else if (res.data) {
-        router.push(`/blog/${res.data}?type=private`);
+        router.push(`/blog/${newId}${query}`);
       } else {
         router.push('/');
       }
@@ -230,6 +225,7 @@ const handleKeydown = (e) => {
         <h1>Markdown 编辑器</h1>
       </div>
       <div class="header-actions">
+        <ThemeToggle />
         <button class="btn" @click="publishArticle">发布文章</button>
       </div>
     </div>
@@ -294,45 +290,43 @@ const handleKeydown = (e) => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #fdfdfd; }
+.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg-primary); }
 .header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .header-left { display: flex; align-items: center; gap: 20px; }
 .header-actions { display: flex; gap: 12px; }
-.back-btn { background: transparent; border: none; font-size: 14px; color: #666; cursor: pointer; transition: color 0.2s; }
-.back-btn:hover { color: #111; }
-.header h1 { font-size: 20px; font-weight: 500; color: #111; margin: 0; letter-spacing: -0.5px; }
+.back-btn { background: transparent; border: none; font-size: 14px; color: var(--text-secondary); cursor: pointer; transition: color 0.2s; }
+.back-btn:hover { color: var(--text-primary); }
+.header h1 { font-size: 20px; font-weight: 500; color: var(--text-primary); margin: 0; letter-spacing: -0.5px; }
 
-.editor-container { display: flex; gap: 20px; flex: 1; min-height: 0; }
-.editor-pane { flex: 1; display: flex; flex-direction: column; background: #fafafa; border: 1px solid #eaeaea; border-radius: 6px; overflow: hidden; }
-.pane-header { padding: 12px 16px; background: #fff; border-bottom: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666; }
-.text-input { flex: 1; width: 100%; border: none; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; color: #333; resize: none; background: transparent; outline: none; box-sizing: border-box; }
+.editor-container { display: flex; gap: 0; flex: 1; min-height: 0; }
+.editor-pane { flex: 1; display: flex; flex-direction: column; background: var(--bg-primary); border: 1px solid var(--border-color); overflow: hidden; }
+.pane-header { padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-secondary); }
+.text-input { flex: 1; width: 100%; border: none; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; color: var(--text-primary); resize: none; background: transparent; outline: none; box-sizing: border-box; }
 
-.btn { padding: 6px 16px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-.btn:hover { background-color: #333; }
+.btn { padding: 6px 16px; background-color: var(--text-primary); color: var(--bg-primary); border: 1px solid var(--text-primary); font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.btn:hover { background-color: var(--accent-hover); }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
-.btn-outline:hover { background: #f5f5f5; border-color: #111; }
+.btn-outline { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
+.btn-outline:hover { background: var(--bg-hover); border-color: var(--text-primary); }
 
-.preview-pane { background: #fff; }
+.preview-pane { background: var(--bg-secondary); }
 .preview-content { flex: 1; overflow-y: auto; padding: 40px; }
-.placeholder { color: #999; text-align: center; margin-top: 100px; font-size: 14px; }
-.error { color: red; text-align: center; margin-top: 100px; font-size: 14px; }
+.placeholder { color: var(--text-secondary); text-align: center; margin-top: 100px; font-size: 14px; }
+.error { color: var(--danger-color); text-align: center; margin-top: 100px; font-size: 14px; }
 
-/* Typora 主题文章样式 */
+/* Typora 主题文章样式 - 深色版 */
 .article-render { animation: fade-in 0.6s ease-out; }
 @keyframes fade-in { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
 
-.article-title { font-size: 40px; font-weight: 800; color: #111; margin: 0 0 24px 0; line-height: 1.3; letter-spacing: -0.03em; }
+.article-title { font-size: 40px; font-weight: 800; color: var(--text-primary); margin: 0 0 24px 0; line-height: 1.3; letter-spacing: -0.03em; }
 
 .article-summary { 
   font-size: 16px; 
-  color: #444; 
-  background: linear-gradient(135deg, #fdfbfb 0%, #f3f4f6 100%);
+  color: var(--text-secondary); 
+  background: var(--bg-secondary);
   padding: 20px 24px; 
-  border-left: 4px solid #111; 
+  border-left: 4px solid var(--text-primary); 
   margin: 0 0 24px 0; 
-  border-radius: 0 8px 8px 0; 
-  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
   line-height: 1.6;
 }
 
@@ -342,29 +336,28 @@ const handleKeydown = (e) => {
   flex-wrap: wrap;
   gap: 20px; 
   font-size: 14px; 
-  color: #777; 
+  color: var(--text-secondary); 
   margin-bottom: 48px; 
   padding-bottom: 24px; 
-  border-bottom: 1px solid rgba(0,0,0,0.06); 
+  border-bottom: 1px solid var(--border-color); 
   font-weight: 500;
 }
 .article-meta span { display: flex; align-items: center; gap: 6px; }
 
 /* Typora HTML 渲染细节样式 */
-.typora-style { font-size: 17px; line-height: 1.85; color: #333; }
-.typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: #111; font-weight: 700; margin-top: 2em; margin-bottom: 1em; letter-spacing: -0.01em; }
-.typora-style :deep(h1) { font-size: 28px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-.typora-style :deep(h2) { font-size: 24px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.typora-style { font-size: 17px; line-height: 1.85; color: var(--text-primary); }
+.typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: var(--text-primary); font-weight: 700; margin-top: 2em; margin-bottom: 1em; letter-spacing: -0.01em; }
+.typora-style :deep(h1) { font-size: 28px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+.typora-style :deep(h2) { font-size: 24px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
 .typora-style :deep(h3) { font-size: 20px; }
 .typora-style :deep(p) { margin: 1.2em 0; }
 .typora-style :deep(img) { 
   max-width: 100%; 
   display: block; 
   margin: 32px auto; 
-  border-radius: 8px; 
-  box-shadow: 0 8px 30px rgba(0,0,0,0.08); 
   cursor: zoom-in; 
   transition: transform 0.3s ease;
+  border: 1px solid var(--border-color);
 }
 .typora-style :deep(video) { 
   width: 100%;
@@ -372,52 +365,36 @@ const handleKeydown = (e) => {
   height: auto;
   display: block; 
   margin: 32px auto; 
-  border-radius: 8px; 
-  box-shadow: 0 8px 30px rgba(0,0,0,0.08); 
   outline: none;
+  border: 1px solid var(--border-color);
 }
-.typora-style :deep(img:hover) { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+.typora-style :deep(img:hover) { transform: translateY(-2px); border-color: var(--text-secondary); }
 .typora-style :deep(blockquote) { 
   margin: 2em 0; 
   padding: 16px 24px; 
-  border-left: 4px solid #ddd; 
-  background-color: #fafafa; 
-  color: #555; 
+  border-left: 4px solid var(--text-secondary); 
+  background-color: var(--bg-secondary); 
+  color: var(--text-secondary); 
   font-style: italic;
-  border-radius: 0 8px 8px 0;
 }
 .typora-style :deep(code) { 
   font-family: 'JetBrains Mono', monospace; 
-  background-color: #f0f1f3; 
+  background-color: var(--bg-hover); 
   padding: 3px 6px; 
-  border-radius: 6px; 
   font-size: 0.85em; 
-  color: #d13a69; 
+  color: var(--danger-color); 
 }
 .typora-style :deep(pre) { 
-  background-color: #ffffff; 
-  color: #333;
+  background-color: var(--bg-secondary); 
+  color: var(--text-primary);
   padding: 20px; 
-  border-radius: 12px; 
   overflow-x: auto; 
   line-height: 1.5; 
   position: relative; 
-  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.06);
+  border: 1px solid var(--border-color);
   margin: 2em 0;
 }
-.typora-style :deep(pre::before) {
-  content: '';
-  display: block;
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #ff5f56;
-  box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
-}
+.typora-style :deep(pre::before) { display: none; }
 .typora-style :deep(pre[data-lang]) { padding-top: 48px; }
 .typora-style :deep(pre[data-lang])::after { 
   content: attr(data-lang); 
@@ -425,7 +402,7 @@ const handleKeydown = (e) => {
   top: 12px; 
   right: 16px; 
   font-size: 12px; 
-  color: #888; 
+  color: var(--text-secondary); 
   text-transform: uppercase; 
   font-weight: 600; 
   letter-spacing: 0.5px;
@@ -438,7 +415,7 @@ const handleKeydown = (e) => {
   right: 16px;
   background: transparent;
   border: none;
-  color: #666;
+  color: var(--text-secondary);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.2s, color 0.2s;
@@ -450,19 +427,19 @@ const handleKeydown = (e) => {
 }
 .typora-style :deep(pre:hover .copy-code-btn) { opacity: 1; }
 .typora-style :deep(pre:hover::after) { opacity: 0; }
-.typora-style :deep(.copy-code-btn:hover) { color: #111; }
+.typora-style :deep(.copy-code-btn:hover) { color: var(--text-primary); }
 .typora-style :deep(pre code) { background-color: transparent; padding: 0; color: inherit; font-size: 15px; }
 .typora-style :deep(ul), .typora-style :deep(ol) { padding-left: 2em; margin: 1.2em 0; }
 .typora-style :deep(li) { margin: 0.4em 0; }
 .typora-style :deep(a) { 
-  color: #0366d6; 
+  color: #177ddc; 
   text-decoration: none; 
   border-bottom: 1px solid transparent;
   transition: border-color 0.2s, color 0.2s;
 }
 .typora-style :deep(a:hover) { 
-  color: #005cc5;
-  border-bottom-color: #005cc5;
+  color: #1890ff;
+  border-bottom-color: #1890ff;
 }
 
 /* 表格样式优化 */
@@ -480,23 +457,23 @@ const handleKeydown = (e) => {
   text-align: left;
 }
 .typora-style :deep(thead th) {
-  border-top: 1px solid #111;
-  border-bottom: 1px solid #111;
+  border-top: 1px solid var(--text-primary);
+  border-bottom: 1px solid var(--text-primary);
   font-weight: 600;
-  color: #111;
+  color: var(--text-primary);
 }
 .typora-style :deep(tbody tr:last-child td) {
-  border-bottom: 1px solid #111;
+  border-bottom: 1px solid var(--text-primary);
 }
 .typora-style :deep(tbody tr:not(:last-child) td) {
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* 弹窗样式 */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
-.modal-content { background: #fff; padding: 32px; border-radius: 8px; width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
-.modal-content h3 { margin: 0 0 12px 0; font-size: 18px; color: #111; font-weight: 600; }
-.modal-content p { margin: 0 0 24px 0; font-size: 14px; color: #555; line-height: 1.5; }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
+.modal-content { background: var(--bg-secondary); padding: 32px; border: 1px solid var(--border-color); width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.modal-content h3 { margin: 0 0 12px 0; font-size: 18px; color: var(--text-primary); font-weight: 600; }
+.modal-content p { margin: 0 0 24px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
 .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
 
 @media (max-width: 768px) {

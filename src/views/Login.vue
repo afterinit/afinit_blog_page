@@ -4,8 +4,7 @@ import { useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { setToken } from '../utils/auth.js'
-import { assertApiSuccess } from '../utils/apiResponse.js'
-import request from '../utils/request.js'
+import { authApi } from '../api/auth.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 
 const { markLoggedIn } = useUserInfo()
@@ -62,19 +61,11 @@ const handleLogin = async () => {
   errorMsg.value = ''
 
   try {
-    const apiUrl   = import.meta.env.VITE_API_BASE_URL
-    const response = await request(`${apiUrl}/user/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: username.value,
-        password: SHA256(password.value).toString(), // SHA256 单向哈希
-        cfToken:  cfToken.value,
-      }),
-    })
-
-    const res = await response.json()
-    assertApiSuccess(response, res, [20011], '登录失败')
+    const res = await authApi.login(
+      username.value,
+      SHA256(password.value).toString(), // SHA256 单向哈希
+      cfToken.value
+    )
 
     if (res.data?.accessToken) {
       setToken(res.data.accessToken, res.data.refreshToken, res.data.tokenType, rememberMe.value)
@@ -188,14 +179,15 @@ onUnmounted(() => turnstile.cleanup())
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--bg-primary);
   position: relative;
 }
 
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--bg-primary);
+  opacity: 0.75;
   backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
@@ -206,8 +198,8 @@ onUnmounted(() => turnstile.cleanup())
 .spinner {
   width: 36px;
   height: 36px;
-  border: 3px solid #e0e0e0;
-  border-top-color: #111;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--text-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -226,10 +218,9 @@ onUnmounted(() => turnstile.cleanup())
 }
 
 .login-box {
-  background: #fff;
+  background: var(--bg-secondary);
   padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-color);
   width: 100%;
   max-width: 380px;
 }
@@ -237,7 +228,7 @@ onUnmounted(() => turnstile.cleanup())
 .login-box h2 {
   margin: 0 0 24px 0;
   text-align: center;
-  color: #111;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -249,17 +240,18 @@ onUnmounted(() => turnstile.cleanup())
   display: block;
   margin-bottom: 8px;
   font-size: 14px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid var(--border-color);
   font-size: 14px;
   box-sizing: border-box;
   outline: none;
+  background: transparent;
+  color: var(--text-primary);
   transition: border-color 0.2s;
 }
 
@@ -277,7 +269,7 @@ onUnmounted(() => turnstile.cleanup())
   position: absolute;
   right: 12px;
   cursor: pointer;
-  color: #aaa;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -285,23 +277,23 @@ onUnmounted(() => turnstile.cleanup())
 }
 
 .toggle-password:hover {
-  color: #555;
+  color: var(--text-primary);
 }
 
 .form-group input:focus {
-  border-color: #111;
+  border-color: var(--text-primary);
 }
 
 .form-group input:disabled {
-  background: #f9f9f9;
-  color: #aaa;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .remember-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #555;
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   margin: 0;
@@ -316,21 +308,21 @@ onUnmounted(() => turnstile.cleanup())
 
 .forgot-link {
   font-size: 13px;
-  color: #111;
+  color: var(--text-primary);
   cursor: pointer;
   text-decoration: underline;
   transition: color 0.2s;
 }
 
 .forgot-link:hover {
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .remember-row input {
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: #111;
+  accent-color: var(--text-primary);
 }
 
 .remember-row input:disabled {
@@ -346,7 +338,7 @@ onUnmounted(() => turnstile.cleanup())
 }
 
 .error-msg {
-  color: #d32f2f;
+  color: var(--danger-color);
   font-size: 13px;
   margin-bottom: 16px;
   text-align: center;
@@ -355,21 +347,20 @@ onUnmounted(() => turnstile.cleanup())
 .login-btn {
   width: 100%;
   padding: 12px;
-  background-color: #111;
-  color: #fff;
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
   border: none;
-  border-radius: 4px;
   font-size: 15px;
   cursor: pointer;
   transition: background-color 0.2s, opacity 0.2s;
 }
 
 .login-btn:hover:not(:disabled) {
-  background-color: #333;
+  background-color: var(--accent-hover);
 }
 
 .login-btn:disabled {
-  background-color: #999;
+  background-color: var(--text-secondary);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -379,18 +370,17 @@ onUnmounted(() => turnstile.cleanup())
   margin-top: 10px;
   padding: 12px;
   background-color: transparent;
-  color: #555;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .home-btn:hover:not(:disabled) {
-  background-color: #f5f5f5;
-  border-color: #aaa;
-  color: #111;
+  background-color: var(--bg-hover);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .home-btn:disabled {
@@ -403,18 +393,17 @@ onUnmounted(() => turnstile.cleanup())
   margin-top: 8px;
   padding: 12px;
   background-color: transparent;
-  color: #555;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .register-btn:hover:not(:disabled) {
-  background-color: #f5f5f5;
-  border-color: #aaa;
-  color: #111;
+  background-color: var(--bg-hover);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .register-btn:disabled {

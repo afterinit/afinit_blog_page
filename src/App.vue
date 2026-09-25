@@ -20,31 +20,34 @@
 
 <script setup>
 import { showAuthExpiredModal, closeAuthExpiredModal, cancelAuthExpiredModal } from './composables/useAuthGuard.js'
+import { useTheme } from './composables/useTheme.js'
+
+useTheme()
 </script>
 
 <style scoped>
 .global-auth-modal {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   z-index: 2147483647;
 }
 
 .auth-modal-content {
-  background: #fff; padding: 30px 40px; border-radius: 12px;
-  text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  background: var(--bg-secondary); padding: 30px 40px;
+  text-align: center; border: 1px solid var(--border-color);
   font-family: system-ui, -apple-system, sans-serif;
   min-width: 300px;
 }
 
 .auth-modal-content h3 {
-  margin: 0 0 10px; font-size: 20px; color: #111; font-weight: 600;
+  margin: 0 0 10px; font-size: 20px; color: var(--text-primary); font-weight: 600;
 }
 
 .auth-modal-content p {
-  margin: 0 0 24px; font-size: 15px; color: #666;
+  margin: 0 0 24px; font-size: 15px; color: var(--text-secondary);
 }
 
 .auth-modal-btns {
@@ -55,28 +58,29 @@ import { showAuthExpiredModal, closeAuthExpiredModal, cancelAuthExpiredModal } f
 
 .auth-modal-btns button {
   padding: 10px 24px;
-  border-radius: 6px;
   font-size: 15px;
   cursor: pointer;
   transition: all 0.2s;
-  border: none;
+  border: 1px solid var(--border-color);
 }
 
 .btn-cancel {
-  background: #f0f0f0;
-  color: #333;
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .btn-cancel:hover {
-  background: #e0e0e0;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .btn-confirm {
-  background: #111;
-  color: #fff;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: var(--text-primary);
 }
 
 .btn-confirm:hover {
-  background: #333;
+  background: var(--accent-hover);
 }
 </style>

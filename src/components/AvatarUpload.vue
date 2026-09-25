@@ -20,12 +20,9 @@
 
 import { ref, computed } from 'vue'
 import Compressor from 'compressorjs'
-import request, { syncTokenAfterAvatarUpload } from '../utils/request.js'
-import { getApiMessage } from '../utils/apiResponse.js'
+import { syncTokenAfterAvatarUpload } from '../utils/request.js'
+import { userApi } from '../api/user.js'
 
-// ─── 常量 ──────────────────────────────────────────────────────────────────────
-
-const API_BASE      = import.meta.env.VITE_API_BASE_URL
 const MAX_FILE_SIZE = 5 * 1024 * 1024   // 5 MB
 const COMPRESS_OPTS = { quality: 0.6, maxWidth: 800 }
 
@@ -122,22 +119,13 @@ function compress(file) {
  * @param {Blob} blob - 压缩后的图片 Blob
  */
 async function upload(blob) {
-  const formData = new FormData()
-  formData.append('file', blob, 'avatar.jpg')
   const uploadStartedAt = Date.now()
-
   try {
-    const response = await request(`${API_BASE}/user/avatar`, {
-      method: 'POST',
-      skipAuthRedirect: true,
-      // Content-Type 由浏览器自动设置（含 boundary），不能手动覆盖
-      body: formData,
-    })
-    const res = await response.json()
+    const res = await userApi.uploadAvatar(blob)
 
     // 后端统一返回体，data 为新头像 URL 字符串
-    if (!response.ok || typeof res?.data !== 'string') {
-      throw new Error(getApiMessage(res, '上传失败，请重试'))
+    if (typeof res?.data !== 'string') {
+      throw new Error('上传失败，请重试')
     }
 
     // 先同步凭证再通知父组件，避免 fetchUserInfo 带着被后端作废的旧 token

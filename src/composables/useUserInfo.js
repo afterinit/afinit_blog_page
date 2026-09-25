@@ -10,9 +10,8 @@
 
 import { ref, computed } from 'vue'
 import { getToken, getRefreshToken, getUserInfo, setUserInfo, hasAuthSession } from '../utils/auth.js'
-import request, { ensureAccessToken } from '../utils/request.js'
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+import { ensureAccessToken } from '../utils/request.js'
+import { userApi } from '../api/user.js'
 
 /** 用户信息响应式对象，跨组件共享同一份引用 */
 const userInfo = ref(getUserInfo())
@@ -55,16 +54,13 @@ async function fetchUserInfo() {
       await ensureAccessToken({ force: true })
     }
 
-    const response = await request(`${API_BASE}/user/info`, {
-      skipAuthRedirect: true
-    })
-    const json = await response.json()
-    if (response.ok && String(json?.code) === '20031' && json.data) {
+    const res = await userApi.getUserInfo(true)
+    if (res && res.success && res.data) {
       const prevAvatar = userInfo.value?.avatar
-      userInfo.value = json.data
-      setUserInfo(json.data)
+      userInfo.value = res.data
+      setUserInfo(res.data)
       isLoggedIn.value = true
-      if (json.data.avatar && json.data.avatar !== prevAvatar) {
+      if (res.data.avatar && res.data.avatar !== prevAvatar) {
         avatarCacheKey.value += 1
       }
     }

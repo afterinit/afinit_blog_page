@@ -44,7 +44,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { marked, processHtml } from '../utils/mdParser.js'
-import { getToken, getTokenType } from '../utils/auth.js'
+import { aiApi } from '../api/ai.js'
 
 const props = defineProps({
   blogId: {
@@ -81,22 +81,8 @@ const handleSend = async () => {
   error.value = ''
   isThinking.value = true
 
-  const token = getToken()
-  const tokenType = getTokenType() || 'Bearer'
-  const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
   try {
-    const response = await fetch(`${apiUrl}/ai/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token ? `${tokenType} ${token}` : ''
-      },
-      body: JSON.stringify({
-        blogId: String(props.blogId),
-        question
-      })
-    })
+    const response = await aiApi.streamQuestion(props.blogId, question)
 
     if (!response.ok) {
       if (response.status === 401) {
