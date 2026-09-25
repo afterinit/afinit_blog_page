@@ -149,10 +149,13 @@ onUnmounted(() => turnstile.cleanup())
         </div>
       </div>
 
-      <label class="remember-row">
-        <input type="checkbox" v-model="rememberMe" :disabled="loading" />
-        <span>记住我</span>
-      </label>
+      <div class="form-options">
+        <label class="remember-row">
+          <input type="checkbox" v-model="rememberMe" :disabled="loading" />
+          <span>记住我</span>
+        </label>
+        <span class="forgot-link" @click="router.push('/forgot-password')">忘记密码？</span>
+      </div>
 
       <!-- Turnstile 挂载点 -->
       <div class="turnstile-wrapper">
@@ -298,10 +301,29 @@ onUnmounted(() => turnstile.cleanup())
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: -4px 0 18px;
   color: #555;
   font-size: 14px;
   cursor: pointer;
+  margin: 0;
+}
+
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -4px 0 18px;
+}
+
+.forgot-link {
+  font-size: 13px;
+  color: #111;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.forgot-link:hover {
+  color: #555;
 }
 
 .remember-row input {

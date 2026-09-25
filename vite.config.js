@@ -6,7 +6,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './', // 改为相对路径，防止打包后找不到 CSS/JS 资源导致白屏
+  base: '/', // 改为绝对路径 '/'，确保 History 多级路由下刷新不白屏
   server: {
   },
   plugins: [

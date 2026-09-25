@@ -16,13 +16,13 @@ export class AuthError extends Error {
 // ─── Axios 实例 ────────────────────────────────────────────────────────────────
 
 const http = axios.create({
-  timeout: 15000,
+  timeout: 60000,
   validateStatus: () => true,
   transformResponse: [(data) => data],
 })
 
 const refreshHttp = axios.create({
-  timeout: 15000,
+  timeout: 60000,
   validateStatus: () => true,
   transformResponse: [(data) => data],
 })
@@ -136,10 +136,20 @@ async function refreshAccessToken() {
   const token = getToken()
   if (token) headers.Authorization = `${getTokenType()} ${token}`
 
-  const response = await refreshHttp.post(`${apiUrl}/user/refresh`, null, { headers })
-  const tokenData = extractTokenData(parseBody(response.data))
+  let response;
+  try {
+    response = await refreshHttp.post(`${apiUrl}/user/refresh`, null, { headers })
+  } catch (err) {
+    throw new Error('网络繁忙请稍后再试')
+  }
+  
+  if (response.status === 401) {
+    handleAuthFailure(false)
+    throw new AuthError()
+  }
 
-  if (response.status === 401 || !tokenData.accessToken) {
+  const tokenData = extractTokenData(parseBody(response.data))
+  if (!tokenData.accessToken) {
     handleAuthFailure(false)
     throw new AuthError()
   }
@@ -214,37 +224,17 @@ http.interceptors.response.use(
     try {
       return await retryWithFreshToken(originalConfig)
     } catch (e) {
-      handleAuthFailure(originalConfig.skipAuthRedirect)
-      throw new AuthError()
+      if (e.isAuthError) {
+        handleAuthFailure(originalConfig.skipAuthRedirect)
+        throw new AuthError()
+      }
+      throw e
     }
   },
 
   // ── 错误处理器（网络异常 / CORS 拦截 / 超时等，无 response 对象） ──
   async (error) => {
-    const originalConfig = error?.config
-
-    if (originalConfig && !originalConfig._retry && !isAuthRequest(originalConfig.url)) {
-      const hasToken = !!getToken()
-      const hasRefresh = !!getRefreshToken()
-
-      // 有 token 也有 refresh，尝试刷新
-      if (hasToken && hasRefresh) {
-        try {
-          return await retryWithFreshToken(originalConfig)
-        } catch (e) {
-          handleAuthFailure(originalConfig.skipAuthRedirect)
-          throw new AuthError()
-        }
-      }
-
-      // 其他情况（只有 token 没 refresh，或者都没），且产生了错误，大概率是 401 引起的 CORS 拦截
-      // 直接触发过期弹窗
-      handleAuthFailure(originalConfig.skipAuthRedirect)
-      throw new AuthError()
-    }
-
-    // 如果不是我们管的请求，原样抛出
-    return Promise.reject(error)
+    return Promise.reject(new Error('网络繁忙请稍后再试'))
   }
 )
 

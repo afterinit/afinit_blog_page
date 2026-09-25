@@ -1,5 +1,7 @@
 <script setup>
-import { reactive, ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { reactive, ref, computed, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
+
+defineOptions({ name: 'UserProfile' })
 import { useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
@@ -19,14 +21,10 @@ const { userInfo, fetchUserInfo, patchUserInfo } = useUserInfo()
 const pageLoading = ref(false)
 const pageError   = ref('')
 
+import { formatLocalTime } from '../utils/timeFormat.js'
+
 function formatTime(raw) {
-  if (!raw) return '—'
-  try {
-    return new Date(raw).toLocaleString('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    })
-  } catch { return raw }
+  return formatLocalTime(raw)
 }
 
 // ─── 修改昵称（无需验证码） ────────────────────────────────────────────────────
@@ -290,6 +288,40 @@ function useDeleteAccount() {
 }
 const deleteAccount = useDeleteAccount()
 
+// ─── 我的文章 ──────────────────────────────────────────────────────────────────
+
+const personalPosts = ref([])
+const postsLoading = ref(false)
+const postsError = ref('')
+const postsPage = ref(1)
+const postsSize = ref(10)
+const postsTotal = ref(0)
+const postsPages = ref(0)
+
+async function fetchPersonalPosts() {
+  postsLoading.value = true
+  postsError.value = ''
+  try {
+    const response = await request(`${API_BASE}/blog/personal?page=${postsPage.value}&size=${postsSize.value}`)
+    const res = await response.json()
+    assertApiSuccess(response, res, [30041], '文章列表加载失败')
+    const data = res.data
+    personalPosts.value = data.records || []
+    postsTotal.value = data.total || 0
+    postsPages.value = data.pages || 0
+  } catch (err) {
+    postsError.value = `加载失败：${err.message}`
+  } finally {
+    postsLoading.value = false
+  }
+}
+
+function changePostsPage(p) {
+  if (p < 1 || (postsPages.value > 0 && p > postsPages.value)) return
+  postsPage.value = p
+  fetchPersonalPosts()
+}
+
 async function onAvatarUpdated(url) {
   patchUserInfo({ avatar: url })
   await fetchUserInfo()
@@ -297,7 +329,7 @@ async function onAvatarUpdated(url) {
 
 // ─── 生命周期 ──────────────────────────────────────────────────────────────────
 
-onMounted(async () => {
+async function refreshProfile() {
   if (!hasAuthSession()) { router.push('/login'); return }
   if (!userInfo.value || isAccessTokenExpired()) pageLoading.value = true
   try {
@@ -306,11 +338,22 @@ onMounted(async () => {
       router.push('/login')
       return
     }
+    fetchPersonalPosts()
   } catch {
     if (!userInfo.value) pageError.value = '获取用户信息失败，请刷新重试'
   } finally {
     pageLoading.value = false
   }
+}
+
+let isInitialMount = true
+onMounted(async () => {
+  await refreshProfile()
+  isInitialMount = false
+})
+
+onActivated(() => {
+  if (!isInitialMount) refreshProfile()
 })
 
 onUnmounted(() => {
@@ -348,6 +391,7 @@ onUnmounted(() => {
         />
         <div class="avatar-info">
           <div class="user-name">{{ userInfo.nickname || '未设置昵称' }}</div>
+          <div class="user-username">@{{ userInfo.username || '未设置' }}</div>
           <div class="user-id">UID · {{ userInfo.id != null ? String(userInfo.id) : '—' }}</div>
         </div>
       </div>
@@ -362,6 +406,10 @@ onUnmounted(() => {
             <span class="info-value">{{ userInfo.nickname || '—' }}</span>
             <button class="edit-btn" @click="editNickname.open">修改</button>
           </dd>
+        </div>
+        <div class="info-row">
+          <dt>用户名</dt>
+          <dd>{{ userInfo.username || '—' }}</dd>
         </div>
         <div class="info-row">
           <dt>邮箱</dt>
@@ -383,6 +431,41 @@ onUnmounted(() => {
       <div class="action-group" style="display: flex; gap: 10px;">
         <button class="btn btn-outline full-width" @click="editInfo.open">修改信息</button>
         <button class="btn btn-danger full-width" @click="deleteAccount.open">注销账号</button>
+      </div>
+
+      <div class="divider" style="margin-top: 40px; margin-bottom: 24px;"></div>
+      
+      <div class="section-title">我的文章</div>
+
+      <div v-if="postsLoading" class="status-msg" style="margin-top: 40px;">正在加载文章...</div>
+      <div v-else-if="postsError" class="status-msg error" style="margin-top: 40px;">{{ postsError }}</div>
+      <div v-else-if="personalPosts.length === 0" class="status-msg" style="margin-top: 40px;">暂无文章</div>
+      <div v-else class="post-list">
+        <article
+          class="post-card"
+          :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
+          v-for="post in personalPosts"
+          :key="post.id"
+          @click="router.push(`/blog/${post.id}${post.status === 0 ? '?type=private' : ''}`)"
+        >
+          <h2 class="post-title">
+            <span v-if="post.status === 0" class="status-tag">未发布</span>
+            {{ post.title }}
+          </h2>
+          <p class="post-summary">{{ post.summary }}</p>
+          <div class="post-meta">
+            <span v-if="post.nickname">{{ post.nickname }}</span>
+            <span>{{ formatTime(post.createTime) }}</span>
+            <span>阅读 {{ post.viewCount ?? 0 }}</span>
+            <span>点赞 {{ post.likeCount ?? 0 }}</span>
+          </div>
+        </article>
+
+        <div class="pagination" v-if="postsTotal > postsSize || postsPage > 1">
+          <button class="btn btn-ghost btn-sm" :disabled="postsPage <= 1" @click="changePostsPage(postsPage - 1)">上一页</button>
+          <span class="page-info">第 {{ postsPage }} / {{ postsPages }} 页</span>
+          <button class="btn btn-ghost btn-sm" :disabled="postsPage >= postsPages" @click="changePostsPage(postsPage + 1)">下一页</button>
+        </div>
       </div>
 
     </template>
@@ -587,6 +670,7 @@ onUnmounted(() => {
 .avatar-section { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
 .avatar-info    { display: flex; flex-direction: column; gap: 4px; }
 .user-name      { font-size: 20px; font-weight: 600; color: #111; }
+.user-username  { font-size: 13px; color: #666; font-weight: 500; }
 .user-id        { font-size: 12px; color: #aaa; }
 
 /* ── 分割线 ───────────────────────────────────────────────────────────────────── */
@@ -727,4 +811,31 @@ onUnmounted(() => {
 .modal-fade-enter-active { transition: opacity 0.2s, transform 0.2s; }
 .modal-fade-leave-active { transition: opacity 0.15s, transform 0.15s; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.96); }
+/* ── 我的文章 ─────────────────────────────────────────────────────────────────── */
+.section-title { font-size: 18px; font-weight: 600; color: #111; margin-bottom: 20px; }
+.post-list { display: flex; flex-direction: column; gap: 20px; }
+.post-card {
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #fafafa;
+}
+.post-card--published { border-color: transparent; }
+.post-card--published:hover { background-color: #f5f5f5; border-color: #eaeaea; transform: translateY(-2px); }
+.post-card--unpublished { border-color: #ffb74d; background-color: #fff8e1; }
+.post-card--unpublished:hover { border-color: #f57c00; transform: translateY(-2px); }
+.post-title  { font-size: 18px; font-weight: 600; color: #111; margin: 0 0 6px; display: flex; align-items: center; }
+.post-summary { font-size: 14px; color: #555; line-height: 1.5; margin: 0 0 12px; }
+.post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #999; }
+.status-tag {
+  color: #f57c00; font-size: 12px; border: 1px solid #ffb74d;
+  padding: 2px 6px; border-radius: 4px; margin-right: 8px; font-weight: 400;
+}
+
+/* 分页 */
+.pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 30px; }
+.page-info { font-size: 14px; color: #555; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
 </style>

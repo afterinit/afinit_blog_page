@@ -7,7 +7,7 @@ import { assertApiSuccess, getApiSuccessMessage } from '../utils/apiResponse.js'
 import { refreshHomePosts } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import request, { AuthError } from '../utils/request.js'
-
+import { formatLocalTime } from '../utils/timeFormat.js'
 const router = useRouter()
 const inputText = ref('')
 const fileInput = ref(null)
@@ -30,8 +30,7 @@ const articleData = computed(() => {
     const htmlSafe = processHtml(htmlRaw);
 
     // 生成当前时间用于预览显示
-    const now = new Date()
-    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0')
+    const dateStr = formatLocalTime(new Date())
 
     return {
       title: parsed.title || '未命名标题',

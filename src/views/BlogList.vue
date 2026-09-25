@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
+import SHA256 from 'crypto-js/sha256'
 import { registerHomeRefresh } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { removeToken, hasAuthSession } from '../utils/auth.js'
@@ -37,18 +38,23 @@ const posts        = ref([])
 const postsLoading = ref(false)
 const postsError   = ref('')
 
+const postsPage    = ref(1)
+const postsSize    = ref(10)
+const postsTotal   = ref(0)
+
 async function fetchPosts(silent = false) {
   if (!silent) postsLoading.value = true
   postsError.value   = ''
   try {
     const url = currentTab.value === 'public'
-      ? `${API_BASE}/blog?page=1&size=10`
-      : `${API_BASE}/blog/private?page=1&size=10`
+      ? `${API_BASE}/blog?page=${postsPage.value}&size=${postsSize.value}`
+      : `${API_BASE}/blog/private?page=${postsPage.value}&size=${postsSize.value}`
     const response = await request(url)
     const res = await response.json()
     assertApiSuccess(response, res, [30041], '文章列表加载失败')
     const data = res.data
     posts.value = Array.isArray(data) ? data : (data?.records ?? [])
+    postsTotal.value = data?.total || 0
   } catch (err) {
     if (!(err instanceof AuthError)) {
       postsError.value = `加载失败：${err.message}`
@@ -60,9 +66,16 @@ async function fetchPosts(silent = false) {
   }
 }
 
+function changePostsPage(p) {
+  if (p < 1) return
+  postsPage.value = p
+  fetchPosts()
+}
+
 function switchTab(tab) {
   if (currentTab.value === tab) return
   currentTab.value = tab
+  postsPage.value = 1
   if (tab === 'users') {
     fetchAdminUsers()
   } else {
@@ -150,15 +163,62 @@ function blockAdminUser(user) {
   })
 }
 
+import { formatLocalTime } from '../utils/timeFormat.js'
+
 function formatTime(raw) {
-  if (!raw) return '—'
-  try {
-    return new Date(raw).toLocaleString('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    })
-  } catch { return raw }
+  return formatLocalTime(raw)
 }
+
+function useEditAdminUser() {
+  const show = ref(false)
+  const form = reactive({ id: '', username: '', email: '', password: '' })
+  const loading = ref(false)
+  
+  function open(user) {
+    form.id = user.id
+    form.username = user.username || ''
+    form.email = user.email || ''
+    form.password = ''
+    show.value = true
+  }
+  
+  function close() {
+    show.value = false
+  }
+  
+  async function submit() {
+    loading.value = true
+    try {
+      const body = { id: form.id }
+      if (form.username.trim()) body.username = form.username.trim()
+      if (form.email.trim()) body.email = form.email.trim()
+      if (form.password) body.password = SHA256(form.password).toString()
+
+      const response = await request(`${API_BASE}/user/info`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const res = await response.json()
+      if (response.ok && String(res.code).endsWith('1')) {
+        showAlert('修改成功！')
+        show.value = false
+        fetchAdminUsers()
+      } else {
+        const msg = res.msg || res.message || '修改失败'
+        showAlert(`修改失败：${msg}`)
+      }
+    } catch (err) {
+      if (!err.isAuthError) showAlert(`网络错误：${err.message}`)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { show, form, loading, open, close, submit }
+}
+const editAdminUser = useEditAdminUser()
+
 
 
 // ─── 弹窗 ──────────────────────────────────────────────────────────────────────
@@ -291,7 +351,12 @@ onUnmounted(() => {
     <header class="header">
       <h1>afinit blog</h1>
       <div class="header-actions">
+        <a href="mailto:afinit@afinit.top" class="contact-link" title="afinit@afinit.top">联系作者</a>
         <template v-if="isLoggedIn">
+          <!-- 发布文章按钮 -->
+          <div class="user-menu" @click="router.push('/upload')" style="padding: 5px 10px;">
+            <span class="tools-btn-label" style="padding-left: 0;">发布文章</span>
+          </div>
           <!-- 工具菜单 -->
           <div class="user-menu" ref="toolsMenuRef" @click.stop="showToolsDropdown = !showToolsDropdown; showDropdown = false">
             <span class="tools-btn-label">工具</span>
@@ -302,9 +367,6 @@ onUnmounted(() => {
             </span>
             <Transition name="dropdown">
               <div v-if="showToolsDropdown" class="dropdown-menu">
-                <div class="dropdown-item" @click.stop="() => { showToolsDropdown = false; router.push('/upload') }">
-                  Markdown 写作
-                </div>
                 <div class="dropdown-item" @click.stop="() => { showToolsDropdown = false; router.push('/generator') }">
                   项目构建器
                 </div>
@@ -369,7 +431,7 @@ onUnmounted(() => {
               <tr>
                 <th>ID</th>
                 <th style="width: 50px;">头像</th>
-                <th>昵称</th>
+                <th>昵称 / 用户名</th>
                 <th>邮箱</th>
                 <th>注册时间</th>
                 <th>状态</th>
@@ -385,7 +447,10 @@ onUnmounted(() => {
                     <span v-else class="table-avatar-letter">{{ (user.nickname || user.username || 'U').charAt(0).toUpperCase() }}</span>
                   </div>
                 </td>
-                <td>{{ user.nickname || user.username || '—' }}</td>
+                <td>
+                  <div style="font-weight: 500; color: #111;">{{ user.nickname || '未设置昵称' }}</div>
+                  <div style="font-size: 12px; color: #888; margin-top: 4px;">@{{ user.username || '—' }}</div>
+                </td>
                 <td>{{ user.email || '—' }}</td>
                 <td>{{ formatTime(user.createTime) }}</td>
                 <td>
@@ -395,6 +460,7 @@ onUnmounted(() => {
                 </td>
                 <td>
                   <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-outline btn-sm" @click="editAdminUser.open(user)">编辑</button>
                     <button
                       class="btn btn-outline btn-sm"
                       :class="user.status !== 0 ? 'btn-warning' : 'btn-success'"
@@ -436,7 +502,7 @@ onUnmounted(() => {
             <p class="post-summary">{{ post.summary }}</p>
             <div class="post-meta">
               <span v-if="post.nickname">{{ post.nickname }}</span>
-              <span>{{ post.createTime?.replace('T', ' ') }}</span>
+              <span>{{ formatTime(post.createTime) }}</span>
               <span>阅读 {{ post.viewCount ?? 0 }}</span>
               <span>点赞 {{ post.likeCount ?? 0 }}</span>
               <div class="inline-actions" v-if="currentTab === 'private' && userInfo?.role === 1">
@@ -445,6 +511,12 @@ onUnmounted(() => {
               </div>
             </div>
           </article>
+        </div>
+        
+        <div class="pagination" v-if="postsTotal > postsSize || postsPage > 1">
+          <button class="btn btn-ghost btn-sm" :disabled="postsPage <= 1" @click="changePostsPage(postsPage - 1)">上一页</button>
+          <span class="page-info">第 {{ postsPage }} 页</span>
+          <button class="btn btn-ghost btn-sm" :disabled="posts.length < postsSize" @click="changePostsPage(postsPage + 1)">下一页</button>
         </div>
       </template>
     </main>
@@ -457,6 +529,31 @@ onUnmounted(() => {
         <div class="modal-actions">
           <button v-if="customAlert.isConfirm" class="btn btn-outline" @click="handleAlertCancel">取消</button>
           <button class="btn" :class="{ 'btn-danger': customAlert.isConfirm }" @click="handleAlertConfirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑用户弹窗 -->
+    <div class="modal-overlay" v-if="editAdminUser.show.value">
+      <div class="modal-content">
+        <h3>编辑用户信息</h3>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+          <div>
+            <label style="font-size: 13px; color: #555; display: block; margin-bottom: 4px;">用户名</label>
+            <input v-model="editAdminUser.form.username" type="text" class="input-field" placeholder="留空则不修改" />
+          </div>
+          <div>
+            <label style="font-size: 13px; color: #555; display: block; margin-bottom: 4px;">邮箱</label>
+            <input v-model="editAdminUser.form.email" type="email" class="input-field" placeholder="邮箱" />
+          </div>
+          <div>
+            <label style="font-size: 13px; color: #555; display: block; margin-bottom: 4px;">新密码</label>
+            <input v-model="editAdminUser.form.password" type="password" class="input-field" placeholder="留空则不修改" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="editAdminUser.close" :disabled="editAdminUser.loading.value">取消</button>
+          <button class="btn" @click="editAdminUser.submit" :disabled="editAdminUser.loading.value">{{ editAdminUser.loading.value ? '保存中...' : '确定' }}</button>
         </div>
       </div>
     </div>
@@ -478,6 +575,9 @@ onUnmounted(() => {
 .header h1 { font-size: 24px; font-weight: 600; color: #111; margin: 0; letter-spacing: -0.5px; }
 .header-actions { display: flex; align-items: center; gap: 16px; }
 
+.contact-link { font-size: 14px; color: #555; text-decoration: none; transition: color 0.2s; }
+.contact-link:hover { color: #111; text-decoration: underline; }
+
 .btn { padding: 6px 14px; background-color: #111; color: #fff; border: 1px solid #111; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .btn-outline { background-color: transparent; color: #111; border-color: #ccc; }
 .btn-outline:hover { background-color: #f5f5f5; border-color: #111; }
@@ -492,9 +592,9 @@ onUnmounted(() => {
 .tab-btn.active { color: #111; }
 .tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background-color: #111; }
 
-.post-list { display: flex; flex-direction: column; gap: 30px; }
+.post-list { display: flex; flex-direction: column; gap: 20px; }
 .post-card {
-  padding: 24px;
+  padding: 16px;
   border: 1px solid transparent;
   border-radius: 8px;
   cursor: pointer;
@@ -504,8 +604,8 @@ onUnmounted(() => {
 .post-card--self { border: 2px solid #111; }
 .post-card:hover { background-color: #f5f5f5; border-color: #eaeaea; transform: translateY(-2px); }
 .post-card--self:hover { border-color: #111; background-color: #f5f5f5; }
-.post-title  { font-size: 20px; font-weight: 600; color: #111; margin: 0 0 10px; }
-.post-summary { font-size: 14px; color: #555; line-height: 1.6; margin: 0 0 16px; }
+.post-title  { font-size: 18px; font-weight: 600; color: #111; margin: 0 0 6px; }
+.post-summary { font-size: 14px; color: #555; line-height: 1.5; margin: 0 0 12px; }
 .post-meta   { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #999; }
 .inline-actions { display: flex; gap: 8px; margin-left: auto; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
@@ -583,6 +683,9 @@ onUnmounted(() => {
 
 .dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px); }
+
+.input-field { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+.input-field:focus { border-color: #111; outline: none; }
 
 /* 用户管理表格样式 */
 .table-container { overflow-x: auto; background: #fff; border-radius: 8px; border: 1px solid #eaeaea; padding: 20px; }

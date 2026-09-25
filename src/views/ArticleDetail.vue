@@ -7,7 +7,7 @@ import { refreshHomePosts } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import request, { AuthError } from '../utils/request.js'
-
+import { formatLocalTime } from '../utils/timeFormat.js'
 const route = useRoute()
 const router = useRouter()
 const { userInfo } = useUserInfo()
@@ -139,9 +139,7 @@ const fetchArticle = async () => {
 
     const data = res.data ? res.data : res
 
-    let dateStr = data.createTime || ''
-    if (dateStr) dateStr = dateStr.replace('T', ' ')
-
+    let dateStr = data.createTime ? formatLocalTime(data.createTime) : ''
     let htmlRaw = marked.parse(data.content || '');
     if (typeof htmlRaw !== 'string') {
         htmlRaw = String(htmlRaw);
@@ -331,8 +329,6 @@ const updateScrollInfo = () => {
 
 // 防重叠布局计算（在maxScrollTop变化或弹幕增加时重新排版）
 const layoutBarrages = computed(() => {
-  if (maxScrollTop.value <= 0) return []
-  
   // 按照 scrollPercent 排序，确保从前到后排版
   const sorted = [...storedBarrages.value].sort((a, b) => Number(a.scrollPercent) - Number(b.scrollPercent))
   
@@ -343,13 +339,17 @@ const layoutBarrages = computed(() => {
   const virtualGap = 30 / speedMultiplier
   // 视口一半宽度的虚拟像素（保证极端位置的弹幕也有足够的距离飞入飞出）
   const halfScreenVirtual = (window.innerWidth > 0 ? window.innerWidth / 2 : 500) / speedMultiplier
-  // 实际可供分配的内部虚拟滚动长度
-  const safeMax = Math.max(0, maxScrollTop.value - 2 * halfScreenVirtual)
+  
+  // 为了让弹幕在滚动到对应位置时刚好处于屏幕中央，将排版起止设为 0 和 maxScrollTop
+  // 这样当 currentScrollTop == P * maxScrollTop 时，偏差 pixelDiff 恰好为 0（即居中）
+  // 极短文章(maxScrollTop=0)时，所有弹幕的 basePixelX 都为 0，从中央开始防重叠排版
+  const startVirtualX = 0;
+  const layoutWidth = Math.max(0, maxScrollTop.value);
   
   return sorted.map(b => {
-    // 弹幕的原始虚拟锚点：0% 映射到起始边缘缓冲，100% 映射到结束边缘缓冲
+    // 弹幕的原始虚拟锚点：按百分比映射到起止范围内
     const mappedPercent = Number(b.scrollPercent) / 100
-    const basePixelX = halfScreenVirtual + mappedPercent * safeMax
+    const basePixelX = startVirtualX + mappedPercent * layoutWidth
     // 预估弹幕宽度（屏幕像素）：14px/字 + 40px 的左右内边距
     const estimatedScreenWidth = b.content.length * 14 + 40
     const estimatedVirtualWidth = estimatedScreenWidth / speedMultiplier
