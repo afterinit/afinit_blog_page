@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { refreshHomeData } from '../composables/useHomeRefresh.js'
 import BlogList from '../views/BlogList.vue'
 import ArticleDetail from '../views/ArticleDetail.vue'
 import UploadTool from '../views/UploadTool.vue'
@@ -58,12 +57,6 @@ const router = createRouter({
     } else {
       return { top: 0 }
     }
-  }
-})
-
-router.afterEach((to, from) => {
-  if (to.name === 'home' && from.name !== 'home') {
-    refreshHomeData()
   }
 })
 

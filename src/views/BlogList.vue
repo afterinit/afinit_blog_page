@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { registerHomeRefresh } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
@@ -269,15 +269,28 @@ async function refreshHome(scope = { posts: true, user: true }) {
 }
 
 let unregisterHomeRefresh = null
+let isInitialMount = true
+let refreshOnNextActivation = false
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', onOutsideClick)
   unregisterHomeRefresh = registerHomeRefresh(refreshHome)
-  refreshHome()
+  try {
+    await refreshHome()
+  } finally {
+    isInitialMount = false
+  }
 })
 
 onActivated(() => {
+  if (isInitialMount || !refreshOnNextActivation) return
+  refreshOnNextActivation = false
   refreshHome()
+})
+
+onBeforeRouteLeave((to) => {
+  // 阅读文章后返回时沿用 keep-alive 缓存；进入其它页面后再回来则重新加载。
+  refreshOnNextActivation = to.name !== 'postDetail'
 })
 
 onUnmounted(() => {

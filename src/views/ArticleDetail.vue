@@ -51,9 +51,24 @@ const dragStartX = ref(0)
 const dragStartY = ref(0)
 
 // 控制屏幕弹幕的开启与关闭
-const barrageEnabled = ref(true)
+const BARRAGE_ENABLED_KEY = 'blog:barrage-enabled'
+
+function getInitialBarrageEnabled() {
+  try {
+    return sessionStorage.getItem(BARRAGE_ENABLED_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+const barrageEnabled = ref(getInitialBarrageEnabled())
 const toggleBarrage = () => {
   barrageEnabled.value = !barrageEnabled.value
+  try {
+    sessionStorage.setItem(BARRAGE_ENABLED_KEY, String(barrageEnabled.value))
+  } catch {
+    // 隐私模式禁用存储时，至少在当前文章内保持开关状态。
+  }
 }
 
 const handleArticleClick = (e) => {

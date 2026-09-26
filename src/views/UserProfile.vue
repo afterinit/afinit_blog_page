@@ -2,7 +2,7 @@
 import { reactive, ref, computed, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
 
 defineOptions({ name: 'UserProfile' })
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { hasAuthSession, isAccessTokenExpired } from '../utils/auth.js'
@@ -323,13 +323,21 @@ async function refreshProfile() {
 }
 
 let isInitialMount = true
+let refreshOnNextActivation = false
 onMounted(async () => {
   await refreshProfile()
   isInitialMount = false
 })
 
 onActivated(() => {
-  if (!isInitialMount) refreshProfile()
+  if (isInitialMount || !refreshOnNextActivation) return
+  refreshOnNextActivation = false
+  refreshProfile()
+})
+
+onBeforeRouteLeave((to) => {
+  // 从自己的文章返回时保留个人资料和文章列表；其它入口重新进入时刷新。
+  refreshOnNextActivation = to.name !== 'postDetail'
 })
 
 onUnmounted(() => {
