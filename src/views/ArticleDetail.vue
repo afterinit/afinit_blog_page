@@ -17,10 +17,18 @@ const { userInfo } = useUserInfo()
 const { currentTheme, toggleTheme } = useTheme()
 
 function goBackToList() {
-  if (route.query.from === 'profile') {
-    router.push('/profile')
+  const targetPath = route.query.from === 'profile' ? '/profile' : '/'
+  const previousPath = window.history.state?.back
+  const previousPathname = typeof previousPath === 'string'
+    ? previousPath.split(/[?#]/, 1)[0]
+    : ''
+
+  if (previousPathname === targetPath) {
+    // 真正返回上一条记录，避免形成「个人页 → 文章 → 个人页」的循环。
+    router.back()
   } else {
-    router.push('/')
+    // 直接打开详情页时没有可返回的站内列表，用目标列表替换当前记录。
+    router.replace(targetPath)
   }
 }
 

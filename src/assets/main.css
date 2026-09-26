@@ -43,7 +43,11 @@ body, html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 只有电脑端启用扩散动画时，才覆盖默认的渐隐渐出动画 */
+/* 桌面继续使用原生 View Transitions。 */
+html.theme-transition-circle::view-transition-group(root) {
+  animation: none;
+}
+
 html.theme-transition-circle::view-transition-old(root),
 html.theme-transition-circle::view-transition-new(root) {
   animation: none;
@@ -51,7 +55,70 @@ html.theme-transition-circle::view-transition-new(root) {
   display: block;
 }
 html.theme-transition-circle::view-transition-old(root) { z-index: 1; }
-html.theme-transition-circle::view-transition-new(root) { z-index: 9999; }
+html.theme-transition-circle::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-reveal 400ms ease-out both;
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0px at var(--theme-reveal-x) var(--theme-reveal-y));
+  }
+  to {
+    clip-path: circle(var(--theme-reveal-radius) at var(--theme-reveal-x) var(--theme-reveal-y));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition-circle::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* 手机新主题镜像：滚动容器重现 sticky，禁止 transform/contain 改变 fixed 的坐标系。 */
+.theme-transition-overlay,
+.theme-transition-disc,
+.theme-transition-shield {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  z-index: 2147483647;
+}
+
+.theme-transition-disc {
+  border-radius: 50% !important;
+}
+
+.theme-transition-overlay {
+  overflow: hidden;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+  pointer-events: none;
+}
+
+.theme-transition-shield {
+  background: transparent;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* 镜像直接显示最终颜色，避免组件自身的渐变叠加出第二段速度。 */
+html.theme-transition-snapshot *:not(.theme-transition-overlay):not(.theme-transition-shield),
+html.theme-transition-snapshot *::before,
+html.theme-transition-snapshot *::after {
+  transition: none !important;
+}
+
+.theme-transition-overlay *,
+.theme-transition-overlay *::before,
+.theme-transition-overlay *::after {
+  animation: none !important;
+  caret-color: transparent !important;
+}
 
 * {
   box-sizing: border-box;

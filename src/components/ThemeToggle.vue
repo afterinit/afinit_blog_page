@@ -6,9 +6,8 @@ const { currentTheme, toggleTheme } = useTheme()
 const btnRef = ref(null)
 
 function onToggle(event) {
-  // 直接传递事件对象，useTheme.js 会尝试读取 clientX/clientY 坐标
-  // 如果坐标异常，会自动 fallback 到元素的 getBoundingClientRect
-  toggleTheme(event)
+  // 立即保存按钮元素，避免异步处理时移动浏览器丢失 currentTarget。
+  toggleTheme({ element: btnRef.value, clientX: event.clientX, clientY: event.clientY })
 }
 </script>
 
