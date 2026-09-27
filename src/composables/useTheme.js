@@ -2,6 +2,7 @@ import { nextTick, ref } from 'vue'
 
 const currentTheme = ref(localStorage.getItem('theme') || 'dark')
 let isTransitioning = false
+let mobileTransitionModulePromise = null
 
 const THEME_COLORS = {
   light: '#fdfdfd',
@@ -20,6 +21,30 @@ function applyTheme(theme, syncBrowserColor = true) {
 }
 
 applyTheme(currentTheme.value)
+
+function loadMobileTransitionModule() {
+  if (!mobileTransitionModulePromise) {
+    mobileTransitionModulePromise = import('../utils/themeReveal.js').catch(error => {
+      mobileTransitionModulePromise = null
+      throw error
+    })
+  }
+  return mobileTransitionModulePromise
+}
+
+/** 首屏挂载后空闲预热，避免第一次点击才下载、解析手机动画模块。 */
+export function preloadMobileThemeTransition() {
+  if (!window.matchMedia('(max-width: 768px), (pointer: coarse), (hover: none)').matches) return
+
+  const preload = () => {
+    loadMobileTransitionModule().catch(() => {})
+  }
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(preload, { timeout: 1500 })
+  } else {
+    window.setTimeout(preload, 600)
+  }
+}
 
 /** 动画起点：支持传入触摸/点击事件，也支持 ThemeToggle 传入的按钮元素。 */
 function getTransitionOrigin(source, useButtonCenter = false) {
@@ -85,7 +110,7 @@ export function useTheme() {
         root.classList.add('theme-transition-snapshot')
         // 动画实现不进入首屏依赖；旧 WebView 加载失败时直接切换，不能阻断应用挂载。
         try {
-          const { revealThemeWithSnapshot } = await import('../utils/themeReveal.js')
+          const { revealThemeWithSnapshot } = await loadMobileTransitionModule()
           await revealThemeWithSnapshot(origin, updateTheme, () => setTheme(previousTheme))
         } catch (error) {
           console.warn('移动端主题动画不可用，已降级为直接切换。', error)

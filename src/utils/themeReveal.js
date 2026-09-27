@@ -97,9 +97,6 @@ export async function revealThemeWithSnapshot(origin, showNextTheme, restorePrev
     const y = Math.max(0, Math.min(height, origin.y - rect.top))
     const radius = Math.ceil(Math.hypot(Math.max(x, width - x), Math.max(y, height - y))) + 2
     const startScale = Math.max(0.0025, 1 / radius)
-    const savedScrollLeft = content.scrollLeft
-    const savedScrollTop = content.scrollTop
-
     disc = document.createElement('div')
     disc.className = 'theme-transition-disc'
     disc.setAttribute('aria-hidden', 'true')
@@ -133,11 +130,11 @@ export async function revealThemeWithSnapshot(origin, showNextTheme, restorePrev
 
     content.parentNode.insertBefore(disc, content)
     disc.appendChild(content)
-    content.scrollLeft = savedScrollLeft
-    content.scrollTop = savedScrollTop
+    snapshot.restoreScrollPositions()
 
     await restorePreviousTheme()
     nextThemeIsLive = false
+    snapshot.restoreScrollPositions()
 
     const initialScrollX = window.scrollX
     const initialScrollY = window.scrollY
@@ -170,7 +167,11 @@ export async function revealThemeWithSnapshot(origin, showNextTheme, restorePrev
     // 先提交镜像的初始图层，再开始完整的 400ms 动画。
     const prepared = new Promise(resolve => {
       preparationFrame = requestAnimationFrame(() => {
-        preparationFrame = requestAnimationFrame(resolve)
+        snapshot.restoreScrollPositions()
+        preparationFrame = requestAnimationFrame(() => {
+          snapshot.restoreScrollPositions()
+          resolve()
+        })
       })
     })
     await Promise.race([prepared, interrupted])

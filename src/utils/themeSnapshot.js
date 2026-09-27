@@ -167,6 +167,8 @@ export function createThemeSnapshot() {
   const clones = new Map()
   const scrollPositions = []
   const canvases = []
+  const pageScrollLeft = window.scrollX
+  const pageScrollTop = window.scrollY
   // Include body-level Vue/Element Plus teleports as well as the app itself.
   const sources = Array.from(document.body.children).filter(source => (
     !NON_VISUAL_TAGS.has(source.tagName) &&
@@ -202,17 +204,22 @@ export function createThemeSnapshot() {
   }
 
   document.body.append(overlay, shield)
-  for (const [clone, left, top] of scrollPositions) {
-    clone.scrollLeft = left
-    clone.scrollTop = top
+
+  const restoreScrollPositions = () => {
+    for (const [clone, left, top] of scrollPositions) {
+      clone.scrollLeft = left
+      clone.scrollTop = top
+    }
+    // A mirror scroll container preserves sticky and viewport-fixed positioning.
+    // Do not translate the clone or establish a new fixed-position containing block.
+    overlay.scrollLeft = pageScrollLeft
+    overlay.scrollTop = pageScrollTop
   }
-  // A mirror scroll container preserves sticky and viewport-fixed positioning.
-  // Do not translate the clone or establish a new fixed-position containing block.
-  overlay.scrollLeft = window.scrollX
-  overlay.scrollTop = window.scrollY
+  restoreScrollPositions()
 
   return {
     element: overlay,
+    restoreScrollPositions,
     remove() {
       overlay.remove()
       shield.remove()
