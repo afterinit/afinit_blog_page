@@ -131,11 +131,11 @@ async function sendVerificationCode(cfToken) {
 
     closeTurnstileModal()
     startCountdown()
-    showSuccess('验证码已发送，请查收邮件（注意检查垃圾箱）')
+    showSuccess(res.msg || res.message)
   } catch (err) {
     // 发送失败：关闭弹层，把错误信息展示在表单区
     closeTurnstileModal()
-    showError(err.message || '验证码发送失败，请稍后重试')
+    showError(err.message)
   } finally {
     isSending.value = false
   }
@@ -183,10 +183,10 @@ async function handleRegister() {
     )
 
     // ── 注册成功：提示后跳转登录页 ────────────────────────────────────────────
-    showSuccess('注册成功！即将跳转到登录页…')
+    showSuccess(res.msg || res.message)
     setTimeout(() => router.push('/login'), 1500)
   } catch (err) {
-    showError(err.message || '注册失败，请稍后重试')
+    showError(err.message)
   } finally {
     isSubmitting.value = false
   }

@@ -72,14 +72,14 @@ const handleLogin = async () => {
       markLoggedIn()           // 更新共享 ref，BlogList 挂载时直接拿到已登录状态
       await router.push('/')
     } else {
-      errorMsg.value = res.msg || res.message || '登录失败，请重试'
+      errorMsg.value = res.msg || res.message
       resetTurnstile()
       loading.value  = false
     }
   } catch (err) {
     // 登录失败后自动重置人机验证，无需手动刷新页面
     resetTurnstile()
-    errorMsg.value = err.message || '登录异常'
+    errorMsg.value = err.message
     loading.value = false
   }
 }

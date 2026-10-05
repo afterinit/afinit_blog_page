@@ -247,6 +247,9 @@ export default function request(url, options = {}) {
     headers: options.headers || {},
   }
   if (options.body !== undefined) config.data = options.body
+  if (options.credentials === 'include' || options.withCredentials === true) {
+    config.withCredentials = true
+  }
   if (options.skipAuthRedirect) config.skipAuthRedirect = true
   if (options.responseType) config.responseType = options.responseType
 

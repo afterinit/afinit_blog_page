@@ -7,6 +7,7 @@ import { refreshHomePosts } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
+import { formatCount } from '../utils/countFormat.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import { blogApi } from '../api/blog.js'
@@ -160,6 +161,41 @@ const {
   confirmDialog: handleAlertConfirm,
 } = useDialog()
 
+const VIEW_REPORT_INTERVAL_MS = 2 * 60 * 60 * 1000
+const VIEW_REPORT_STORAGE_PREFIX = 'blog:view-reported-at:'
+
+const reportArticleView = () => {
+  // 审核、待审核和草稿详情不计入公开文章阅读量。
+  if (route.query.type === 'private' || route.query.type === 'personal') return
+
+  const articleId = String(route.params.id)
+  const storageKey = `${VIEW_REPORT_STORAGE_PREFIX}${articleId}`
+  const reportedAt = Date.now()
+  let storageAvailable = true
+
+  try {
+    const lastReportedAt = Number(localStorage.getItem(storageKey))
+    const elapsed = reportedAt - lastReportedAt
+    if (lastReportedAt > 0 && elapsed >= 0 && elapsed < VIEW_REPORT_INTERVAL_MS) return
+    // 先占位，避免多个标签页同时打开时重复上报。
+    localStorage.setItem(storageKey, String(reportedAt))
+  } catch {
+    storageAvailable = false
+  }
+
+  blogApi.recordView(articleId).catch(() => {
+    if (!storageAvailable) return
+    try {
+      // 请求失败则撤销本次占位，下次访问仍可重试。
+      if (localStorage.getItem(storageKey) === String(reportedAt)) {
+        localStorage.removeItem(storageKey)
+      }
+    } catch {
+      // 本地存储不可用时不影响文章浏览。
+    }
+  })
+}
+
 const fetchArticle = async () => {
   loading.value = true
   error.value = ''
@@ -197,7 +233,7 @@ const fetchArticle = async () => {
 
   } catch (err) {
     if (err.isAuthError) return
-    error.value = '文章加载失败: ' + err.message
+    error.value = err.message
     console.error(err)
   } finally {
     loading.value = false
@@ -257,7 +293,7 @@ const submitEdit = async () => {
       parsedData.content
     )
     refreshHomePosts()
-    showAlert(res.msg || res.message || '修改成功！', () => {
+    showAlert(res.msg || res.message, () => {
       isEditing.value = false
       fetchArticle() 
     })
@@ -271,7 +307,7 @@ const confirmDelete = async () => {
   try {
     const res = await blogApi.deleteBlog(route.params.id)
     refreshHomePosts()
-    showAlert(res.msg || res.message || '删除成功！', () => {
+    showAlert(res.msg || res.message, () => {
       showDeleteModal.value = false
       router.replace('/')
     })
@@ -511,28 +547,13 @@ const sendBarrage = async () => {
     const scrollPercent = parseFloat(getScrollPercent().toFixed(2))
     const blogId = Number(route.params.id)
     const res = await barrageApi.sendBarrage(blogId, barrageInput.value.trim(), '#FFFFFF', scrollPercent)
-    if (res.success) {
-      storedBarrages.value.push({
-        id: 'new-' + Date.now(),
-        content: barrageInput.value.trim(),
-        scrollPercent,
-        userId: userInfo.value?.id,
-        _randY: Math.floor(Math.random() * 20 - 10),
-        _randX: Math.floor(Math.random() * 60 - 30)
-      })
-      barrageInput.value = ''
-      showToast('弹幕已发出！')
-      barrageInputActive.value = false
-    } else {
-      barrageError.value = res.msg || res.message || '发送弹幕失败，请稍后再试'
-      setTimeout(() => { barrageError.value = '' }, 3000)
-    }
+    barrageInput.value = ''
+    // 重新获取后端数据，确保新弹幕带有真实 ID，可立即调用删除接口。
+    await loadBarrages()
+    showToast(res.msg || res.message)
+    barrageInputActive.value = false
   } catch (e) {
-    if (e.isAuthError) {
-      barrageError.value = '请先登录后再发送弹幕'
-      return
-    }
-    barrageError.value = '网络异常，请稍后再试'
+    barrageError.value = e.message
     setTimeout(() => { barrageError.value = '' }, 3000)
   } finally {
     barrageSending.value = false
@@ -575,29 +596,17 @@ const handleGlobalClick = (e) => {
 // 删除弹幕
 const deleteBarrage = async (id) => {
   try {
-    if (String(id).startsWith('new-')) {
-      storedBarrages.value = storedBarrages.value.filter(b => String(b.id) !== String(id))
-      showToast('删除弹幕成功')
-      return
-    }
     const res = await barrageApi.deleteBarrage(id)
-    if (res.success) {
-      storedBarrages.value = storedBarrages.value.filter(b => String(b.id) !== String(id))
-      showToast(res.msg || '删除弹幕成功')
-    } else {
-      showToast(res.msg || res.message || '删除弹幕失败', true)
-    }
+    storedBarrages.value = storedBarrages.value.filter(b => String(b.id) !== String(id))
+    showToast(res.msg || res.message)
   } catch (e) {
-    if (e.isAuthError) {
-      showToast('请先登录', true)
-      return
-    }
-    showToast('删除失败', true)
+    showToast(e.message, true)
   }
 }
 
 onMounted(() => {
   fetchArticle()
+  reportArticleView()
   loadBarrages()
   window.addEventListener('scroll', handleScroll, { passive: true })
   window.addEventListener('click', handleGlobalClick)
@@ -793,14 +802,14 @@ onUnmounted(() => {
       <div v-else-if="error" class="status-msg error">{{ error }}</div>
       
       <div v-else-if="articleData" class="article-render">
-        <h1 class="article-title">{{ articleData.title }}</h1>
-        <p v-if="articleData.summary" class="article-summary typora-style" v-html="articleData.summaryHtml"></p>
         <div class="article-meta">
           <span v-if="articleData.nickname">{{ articleData.nickname }}</span>
           <span v-if="articleData.date">{{ articleData.date }}</span>
-          <span>阅读 {{ articleData.viewCount }}</span>
-          <span>点赞 {{ articleData.likeCount }}</span>
+          <span>阅读 {{ formatCount(articleData.viewCount) }}</span>
+          <span>点赞 {{ formatCount(articleData.likeCount) }}</span>
         </div>
+        <h1 class="article-title">{{ articleData.title }}</h1>
+        <p v-if="articleData.summary" class="article-summary typora-style" v-html="articleData.summaryHtml"></p>
         <div class="typora-style" v-html="articleData.htmlContent" @click="handleArticleClick"></div>
       </div>
     </div>
@@ -1074,8 +1083,8 @@ onUnmounted(() => {
   gap: 20px; 
   font-size: 14px; 
   color: var(--text-secondary); 
-  margin-bottom: 48px; 
-  padding-bottom: 24px; 
+  margin-bottom: 28px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border-color); 
   font-weight: 500;
 }

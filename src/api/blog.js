@@ -45,6 +45,18 @@ export const blogApi = {
   },
 
   /**
+   * 记录文章阅读量
+   * @param {string|number} id
+   */
+  recordView(id) {
+    return fetchApi(`/blog/view/${id}`, {
+      method: 'POST',
+      credentials: 'include',
+      skipAuthRedirect: true
+    })
+  },
+
+  /**
    * 发布新文章
    * @param {string} title
    * @param {string} summary

@@ -5,6 +5,7 @@ import SHA256 from 'crypto-js/sha256'
 import { registerHomeRefresh } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { removeToken, hasAuthSession } from '../utils/auth.js'
+import { formatCount } from '../utils/countFormat.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
@@ -61,7 +62,7 @@ async function fetchPosts(silent = false) {
     postsTotal.value = data?.total || 0
   } catch (err) {
     if (!(err instanceof AuthError)) {
-      postsError.value = `加载失败：${err.message}`
+      postsError.value = err.message
     } else if (currentTab.value === 'private') {
       postsError.value = '请先登录以查看草稿'
     }
@@ -104,7 +105,7 @@ async function fetchAdminUsers() {
     adminUsers.value = res.data?.records || res.data?.items || res.data || []
     adminUserTotal.value = res.data?.total || 0
   } catch (err) {
-    if (!err.isAuthError) adminUsersError.value = err.message || '获取用户列表失败'
+    if (!err.isAuthError) adminUsersError.value = err.message
   } finally {
     adminUsersLoading.value = false
   }
@@ -119,11 +120,11 @@ function changeAdminUserPage(p) {
 function deleteAdminUser(user) {
   showConfirm(`确定要注销用户 ${user.id || user.nickname} 吗？此操作不可逆。`, async () => {
     try {
-      await userApi.deleteUser(user.id)
-      showAlert('注销成功！')
+      const res = await userApi.deleteUser(user.id)
+      showAlert(res.msg || res.message)
       fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`注销失败：${err.message}`)
+      if (!err.isAuthError) showAlert(err.message)
     }
   })
 }
@@ -135,11 +136,11 @@ function blockAdminUser(user) {
 
   showConfirm(`确定要${actionName}用户 ${user.id || user.nickname} 吗？`, async () => {
     try {
-      await adminApi.updateUserStatus(user.id, targetStatus)
-      showAlert(`${actionName}成功！`)
+      const res = await adminApi.updateUserStatus(user.id, targetStatus)
+      showAlert(res.msg || res.message)
       fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`${actionName}失败：${err.message}`)
+      if (!err.isAuthError) showAlert(err.message)
     }
   })
 }
@@ -175,12 +176,12 @@ function useEditAdminUser() {
       if (form.email.trim()) body.email = form.email.trim()
       if (form.password) body.password = SHA256(form.password).toString()
 
-      await userApi.updateUserInfo(body)
-      showAlert('修改成功！')
+      const res = await userApi.updateUserInfo(body)
+      showAlert(res.msg || res.message)
       show.value = false
       fetchAdminUsers()
     } catch (err) {
-      if (!err.isAuthError) showAlert(`修改失败：${err.message}`)
+      if (!err.isAuthError) showAlert(err.message)
     } finally {
       loading.value = false
     }
@@ -201,9 +202,9 @@ async function approvePost(id) {
     const res = await adminApi.publishBlog(id)
     posts.value = posts.value.filter(p => p.id !== id)
     fetchPosts(true)
-    showAlert(res.msg || res.message || '更新成功！')
+    showAlert(res.msg || res.message)
   } catch (err) {
-    if (!err.isAuthError) showAlert(`审核失败：${err.message}`)
+    if (!err.isAuthError) showAlert(err.message)
   }
 }
 
@@ -213,9 +214,9 @@ function deletePost(id) {
       const res = await blogApi.deleteBlog(id)
       posts.value = posts.value.filter(p => p.id !== id)
       fetchPosts(true)
-      showAlert(res.msg || res.message || '删除成功！')
+      showAlert(res.msg || res.message)
     } catch (err) {
-      if (!err.isAuthError) showAlert(`删除失败：${err.message}`)
+      if (!err.isAuthError) showAlert(err.message)
     }
   })
 }
@@ -466,8 +467,8 @@ onUnmounted(() => {
             <div class="post-meta">
               <span v-if="post.nickname">{{ post.nickname }}</span>
               <span>{{ formatTime(post.createTime) }}</span>
-              <span>阅读 {{ post.viewCount ?? 0 }}</span>
-              <span>点赞 {{ post.likeCount ?? 0 }}</span>
+              <span>阅读 {{ formatCount(post.viewCount) }}</span>
+              <span>点赞 {{ formatCount(post.likeCount) }}</span>
               <div class="inline-actions" v-if="currentTab === 'private' && userInfo?.role === 1">
                 <button class="btn btn-outline btn-success btn-xs" @click.stop="approvePost(post.id)">审核通过</button>
                 <button class="btn btn-outline btn-danger btn-xs" @click.stop="deletePost(post.id)">删除</button>

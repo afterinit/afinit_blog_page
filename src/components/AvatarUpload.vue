@@ -140,7 +140,7 @@ async function upload(blob) {
   } catch (err) {
     // 恢复成上传前的头像，不留坏掉的 Object URL
     previewUrl.value = props.avatarUrl
-    setError(err.message || '上传失败，请稍后重试')
+    setError(err.message)
   } finally {
     uploading.value = false
   }

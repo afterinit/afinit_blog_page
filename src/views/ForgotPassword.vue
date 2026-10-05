@@ -94,14 +94,14 @@ async function handleGetCode() {
 async function sendVerificationCode(cfToken) {
   isSending.value = true
   try {
-    await authApi.sendCode({ cfToken, username: form.username.trim() })
+    const res = await authApi.sendCode({ cfToken, username: form.username.trim() })
 
     closeTurnstileModal()
     startCountdown()
-    showSuccess('验证码已发送，请查收绑定邮箱')
+    showSuccess(res.msg || res.message)
   } catch (err) {
     closeTurnstileModal()
-    showError(err.message || '验证码发送失败，请稍后重试')
+    showError(err.message)
   } finally {
     isSending.value = false
   }
@@ -133,10 +133,10 @@ async function handleResetPassword() {
       form.code
     )
     
-    showSuccess(res.msg || res.message || '密码修改成功！即将返回登录页…')
+    showSuccess(res.msg || res.message)
     setTimeout(() => router.push('/login'), 1500)
   } catch (err) {
-    showError(err.message || '修改失败，请稍后重试')
+    showError(err.message)
   } finally {
     isSubmitting.value = false
   }

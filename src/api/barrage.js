@@ -14,13 +14,13 @@ export const barrageApi = {
    * @param {string|number} blogId 
    * @param {string} content 
    * @param {string} color 
-   * @param {number} position 
+   * @param {number} scrollPercent
    */
-  sendBarrage(blogId, content, color = '#FFFFFF', position = 0) {
+  sendBarrage(blogId, content, color = '#FFFFFF', scrollPercent = 0) {
     return fetchApi('/barrage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blogId: Number(blogId), content, color, position })
+      body: JSON.stringify({ blogId: Number(blogId), content, color, scrollPercent })
     })
   },
 

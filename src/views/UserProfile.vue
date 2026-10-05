@@ -6,6 +6,7 @@ import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { hasAuthSession, isAccessTokenExpired } from '../utils/auth.js'
+import { formatCount } from '../utils/countFormat.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import AvatarUpload from '../components/AvatarUpload.vue'
 import { useTheme } from '../composables/useTheme.js'
@@ -56,12 +57,12 @@ function useEditNickname() {
 
     loading.value = true
     try {
-      await userApi.updateNickname(trimmed)
+      const res = await userApi.updateNickname(trimmed)
       patchUserInfo({ nickname: trimmed })
-      success.value = '修改成功'
+      success.value = res.msg || res.message
       setTimeout(() => { show.value = false; success.value = '' }, 900)
     } catch (e) {
-      error.value = e.message || '修改失败，请重试'
+      error.value = e.message
     } finally {
       loading.value = false
     }
@@ -140,12 +141,13 @@ function useEditInfo() {
   async function sendCode(cfToken) {
     isSending.value = true
     try {
-      await authApi.sendCode({ cfToken, to: userInfo.value.email })
+      const res = await authApi.sendCode({ cfToken, to: userInfo.value.email })
       closeTurnstile()
       startCountdown()
+      success.value = res.msg || res.message
     } catch (e) {
       closeTurnstile()
-      error.value = e.message || '验证码发送失败，请稍后重试'
+      error.value = e.message
     } finally {
       isSending.value = false
     }
@@ -202,11 +204,11 @@ function useEditInfo() {
       if (username)      body.username = username
       if (form.password) body.password = SHA256(form.password).toString()
 
-      await userApi.updateUserInfo(body)
-      success.value = '修改成功'
+      const res = await userApi.updateUserInfo(body)
+      success.value = res.msg || res.message
       setTimeout(() => { show.value = false; success.value = '' }, 900)
     } catch (e) {
-      error.value = e.message || '修改失败，请重试'
+      error.value = e.message
     } finally {
       loading.value = false
     }
@@ -256,7 +258,7 @@ function useDeleteAccount() {
       clearUserInfo()
       router.push('/login')
     } catch (e) {
-      error.value = e.message || '注销失败，请重试'
+      error.value = e.message
     } finally {
       loading.value = false
     }
@@ -286,7 +288,7 @@ async function fetchPersonalPosts() {
     postsTotal.value = data.total || 0
     postsPages.value = data.pages || 0
   } catch (err) {
-    postsError.value = `加载失败：${err.message}`
+    postsError.value = err.message
   } finally {
     postsLoading.value = false
   }
@@ -440,8 +442,8 @@ onUnmounted(() => {
           <div class="post-meta">
             <span v-if="post.nickname">{{ post.nickname }}</span>
             <span>{{ formatTime(post.createTime) }}</span>
-            <span>阅读 {{ post.viewCount ?? 0 }}</span>
-            <span>点赞 {{ post.likeCount ?? 0 }}</span>
+            <span>阅读 {{ formatCount(post.viewCount) }}</span>
+            <span>点赞 {{ formatCount(post.likeCount) }}</span>
           </div>
         </article>
 

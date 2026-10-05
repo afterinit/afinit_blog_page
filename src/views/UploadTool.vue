@@ -5,6 +5,7 @@ import { parseMdToJson, processHtml, marked } from '../utils/mdParser.js'
 import { refreshHomePosts } from '../composables/useHomeRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
+import { formatCount } from '../utils/countFormat.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import { useUserInfo } from '../composables/useUserInfo.js'
@@ -85,7 +86,7 @@ async function publishArticle() {
 
     refreshHomePosts()
 
-    showAlert(res.msg || res.message || '发布成功！', () => {
+    showAlert(res.msg || res.message, () => {
       const isAdmin = userInfo.value && userInfo.value.role === 1;
       const query = isAdmin ? '' : '?type=personal';
       const newId = res.data;
@@ -265,8 +266,8 @@ const handleKeydown = (e) => {
             <p v-if="articleData.summary" class="article-summary typora-style" style="margin-top: 0;" v-html="articleData.summaryHtml"></p>
             <div class="article-meta">
               <span>{{ articleData.date }}</span>
-              <span>阅读 {{ articleData.viewCount }}</span>
-              <span>点赞 {{ articleData.likeCount }}</span>
+              <span>阅读 {{ formatCount(articleData.viewCount) }}</span>
+              <span>点赞 {{ formatCount(articleData.likeCount) }}</span>
             </div>
             <div class="typora-style" v-html="articleData.htmlContent"></div>
           </div>
