@@ -47,6 +47,7 @@ const postsError   = ref('')
 const postsPage    = ref(1)
 const postsSize    = ref(10)
 const postsTotal   = ref(0)
+const postsPages   = ref(0)
 
 async function fetchPosts(silent = false) {
   if (!silent) postsLoading.value = true
@@ -60,6 +61,7 @@ async function fetchPosts(silent = false) {
     const data = res.data
     posts.value = Array.isArray(data) ? data : (data?.records ?? [])
     postsTotal.value = data?.total || 0
+    postsPages.value = data?.pages ?? Math.ceil(postsTotal.value / postsSize.value)
   } catch (err) {
     if (!(err instanceof AuthError)) {
       postsError.value = err.message
@@ -72,7 +74,7 @@ async function fetchPosts(silent = false) {
 }
 
 function changePostsPage(p) {
-  if (p < 1) return
+  if (p < 1 || (postsPages.value > 0 && p > postsPages.value)) return
   postsPage.value = p
   fetchPosts()
 }
@@ -479,8 +481,8 @@ onUnmounted(() => {
         
         <div class="pagination" v-if="postsTotal > postsSize || postsPage > 1">
           <button class="btn btn-ghost btn-sm" :disabled="postsPage <= 1" @click="changePostsPage(postsPage - 1)">上一页</button>
-          <span class="page-info">第 {{ postsPage }} 页</span>
-          <button class="btn btn-ghost btn-sm" :disabled="posts.length < postsSize" @click="changePostsPage(postsPage + 1)">下一页</button>
+          <span class="page-info">第 {{ postsPage }} / {{ postsPages }} 页</span>
+          <button class="btn btn-ghost btn-sm" :disabled="postsPage >= postsPages" @click="changePostsPage(postsPage + 1)">下一页</button>
         </div>
       </template>
     </main>
