@@ -29,6 +29,11 @@ export const blogApi = {
     return fetchApi(`${endpoint}${query}`)
   },
 
+  /** 获取当前用户点赞的文章 */
+  getLikedBlogs(page = 1, size = 10) {
+    return fetchApi(`/blog/like?page=${page}&size=${size}`)
+  },
+
   /**
    * 获取文章详情
    * @param {string|number} id
@@ -53,6 +58,25 @@ export const blogApi = {
       method: 'POST',
       credentials: 'include',
       skipAuthRedirect: true
+    })
+  },
+
+  /** 获取当前用户对文章的点赞状态 */
+  getLikeStatus(blogId) {
+    return fetchApi(`/like/${blogId}`)
+  },
+
+  /** 点赞文章 */
+  likeBlog(blogId) {
+    return fetchApi(`/like/${blogId}`, {
+      method: 'POST'
+    })
+  },
+
+  /** 取消点赞文章 */
+  unlikeBlog(blogId) {
+    return fetchApi(`/like/${blogId}`, {
+      method: 'DELETE'
     })
   },
 

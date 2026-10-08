@@ -14,6 +14,10 @@ import ThemeToggle from '../components/ThemeToggle.vue'
 import { userApi } from '../api/user.js'
 import { authApi } from '../api/auth.js'
 import { blogApi } from '../api/blog.js'
+import {
+  registerProfileListsRefresh,
+  refreshInvalidatedProfileLists,
+} from '../composables/useProfileRefresh.js'
 
 // ─── 基础 ──────────────────────────────────────────────────────────────────────
 
@@ -268,8 +272,9 @@ function useDeleteAccount() {
 }
 const deleteAccount = useDeleteAccount()
 
-// ─── 我的文章 ──────────────────────────────────────────────────────────────────
+// ─── 作品 / 喜欢 ────────────────────────────────────────────────────────────────
 
+const profileSection = ref('works')
 const personalPosts = ref([])
 const postsLoading = ref(false)
 const postsError = ref('')
@@ -277,6 +282,15 @@ const postsPage = ref(1)
 const postsSize = ref(10)
 const postsTotal = ref(0)
 const postsPages = ref(0)
+
+const likedPosts = ref([])
+const likedPostsLoading = ref(false)
+const likedPostsError = ref('')
+const likedPostsPage = ref(1)
+const likedPostsSize = ref(10)
+const likedPostsTotal = ref(0)
+const likedPostsPages = ref(0)
+const likedPostsLoaded = ref(false)
 
 async function fetchPersonalPosts() {
   postsLoading.value = true
@@ -287,6 +301,11 @@ async function fetchPersonalPosts() {
     personalPosts.value = data.records || []
     postsTotal.value = data.total || 0
     postsPages.value = data.pages || 0
+    const lastPage = Math.max(1, postsPages.value)
+    if (postsPage.value > lastPage) {
+      postsPage.value = lastPage
+      await fetchPersonalPosts()
+    }
   } catch (err) {
     postsError.value = err.message
   } finally {
@@ -298,6 +317,48 @@ function changePostsPage(p) {
   if (p < 1 || (postsPages.value > 0 && p > postsPages.value)) return
   postsPage.value = p
   fetchPersonalPosts()
+}
+
+async function fetchLikedPosts() {
+  likedPostsLoading.value = true
+  likedPostsError.value = ''
+  try {
+    const res = await blogApi.getLikedBlogs(likedPostsPage.value, likedPostsSize.value)
+    const data = res.data || {}
+    likedPosts.value = data.records || []
+    likedPostsTotal.value = data.total || 0
+    likedPostsPages.value = data.pages || 0
+    likedPostsLoaded.value = true
+    const lastPage = Math.max(1, likedPostsPages.value)
+    if (likedPostsPage.value > lastPage) {
+      likedPostsPage.value = lastPage
+      await fetchLikedPosts()
+    }
+  } catch (err) {
+    likedPostsError.value = err.message
+  } finally {
+    likedPostsLoading.value = false
+  }
+}
+
+async function refreshPostSections() {
+  await Promise.all([
+    fetchPersonalPosts(),
+    fetchLikedPosts(),
+  ])
+}
+
+function switchProfileSection(section) {
+  profileSection.value = section
+  if (section === 'likes' && !likedPostsLoaded.value && !likedPostsLoading.value) {
+    fetchLikedPosts()
+  }
+}
+
+function changeLikedPostsPage(p) {
+  if (p < 1 || (likedPostsPages.value > 0 && p > likedPostsPages.value)) return
+  likedPostsPage.value = p
+  fetchLikedPosts()
 }
 
 async function onAvatarUpdated(url) {
@@ -317,6 +378,7 @@ async function refreshProfile() {
       return
     }
     fetchPersonalPosts()
+    if (profileSection.value === 'likes' || likedPostsLoaded.value) fetchLikedPosts()
   } catch {
     if (!userInfo.value) pageError.value = '获取用户信息失败，请刷新重试'
   } finally {
@@ -326,13 +388,22 @@ async function refreshProfile() {
 
 let isInitialMount = true
 let refreshOnNextActivation = false
+let unregisterProfileListsRefresh = null
 onMounted(async () => {
+  unregisterProfileListsRefresh = registerProfileListsRefresh(refreshPostSections)
   await refreshProfile()
+  await refreshInvalidatedProfileLists()
   isInitialMount = false
 })
 
-onActivated(() => {
-  if (isInitialMount || !refreshOnNextActivation) return
+onActivated(async () => {
+  if (isInitialMount) return
+  const refreshedChangedLists = await refreshInvalidatedProfileLists()
+  if (refreshedChangedLists) {
+    refreshOnNextActivation = false
+    return
+  }
+  if (!refreshOnNextActivation) return
   refreshOnNextActivation = false
   refreshProfile()
 })
@@ -343,6 +414,7 @@ onBeforeRouteLeave((to) => {
 })
 
 onUnmounted(() => {
+  unregisterProfileListsRefresh?.()
   editInfo.cleanup()
 })
 </script>
@@ -421,38 +493,86 @@ onUnmounted(() => {
 
       <div class="divider" style="margin-top: 40px; margin-bottom: 24px;"></div>
       
-      <div class="section-title">我的文章</div>
-
-      <div v-if="postsLoading" class="status-msg" style="margin-top: 40px;">正在加载文章...</div>
-      <div v-else-if="postsError" class="status-msg error" style="margin-top: 40px;">{{ postsError }}</div>
-      <div v-else-if="personalPosts.length === 0" class="status-msg" style="margin-top: 40px;">暂无文章</div>
-      <div v-else class="post-list">
-        <article
-          class="post-card"
-          :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
-          v-for="post in personalPosts"
-          :key="post.id"
-          @click="router.push({ path: `/blog/${post.id}`, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
-        >
-          <h2 class="post-title">
-            <span v-if="post.status === 0" class="status-tag">未发布</span>
-            {{ post.title }}
-          </h2>
-          <p class="post-summary">{{ post.summary }}</p>
-          <div class="post-meta">
-            <span v-if="post.nickname">{{ post.nickname }}</span>
-            <span>{{ formatTime(post.createTime) }}</span>
-            <span>阅读 {{ formatCount(post.viewCount) }}</span>
-            <span>点赞 {{ formatCount(post.likeCount) }}</span>
-          </div>
-        </article>
-
-        <div class="pagination" v-if="postsTotal > postsSize || postsPage > 1">
-          <button class="btn btn-ghost btn-sm" :disabled="postsPage <= 1" @click="changePostsPage(postsPage - 1)">上一页</button>
-          <span class="page-info">第 {{ postsPage }} / {{ postsPages }} 页</span>
-          <button class="btn btn-ghost btn-sm" :disabled="postsPage >= postsPages" @click="changePostsPage(postsPage + 1)">下一页</button>
-        </div>
+      <div class="profile-sections" role="tablist" aria-label="个人文章分类">
+        <button
+          type="button"
+          role="tab"
+          class="profile-section-tab"
+          :class="{ active: profileSection === 'works' }"
+          :aria-selected="profileSection === 'works'"
+          @click="switchProfileSection('works')"
+        >作品</button>
+        <button
+          type="button"
+          role="tab"
+          class="profile-section-tab"
+          :class="{ active: profileSection === 'likes' }"
+          :aria-selected="profileSection === 'likes'"
+          @click="switchProfileSection('likes')"
+        >喜欢</button>
       </div>
+
+      <section v-if="profileSection === 'works'" class="profile-section-panel" role="tabpanel">
+        <div v-if="postsLoading" class="status-msg section-status">正在加载作品...</div>
+        <div v-else-if="postsError" class="status-msg error section-status">{{ postsError }}</div>
+        <div v-else-if="personalPosts.length === 0" class="status-msg section-status">暂无作品</div>
+        <div v-else class="post-list">
+          <article
+            class="post-card"
+            :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
+            v-for="post in personalPosts"
+            :key="post.id"
+            @click="router.push({ path: `/blog/${post.id}`, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
+          >
+            <h2 class="post-title">
+              <span v-if="post.status === 0" class="status-tag">未发布</span>
+              {{ post.title }}
+            </h2>
+            <p class="post-summary">{{ post.summary }}</p>
+            <div class="post-meta">
+              <span v-if="post.nickname">{{ post.nickname }}</span>
+              <span>{{ formatTime(post.createTime) }}</span>
+              <span>阅读 {{ formatCount(post.viewCount) }}</span>
+              <span>点赞 {{ formatCount(post.likeCount) }}</span>
+            </div>
+          </article>
+
+          <div class="pagination" v-if="postsTotal > postsSize || postsPage > 1">
+            <button class="btn btn-ghost btn-sm" :disabled="postsPage <= 1" @click="changePostsPage(postsPage - 1)">上一页</button>
+            <span class="page-info">第 {{ postsPage }} / {{ postsPages }} 页</span>
+            <button class="btn btn-ghost btn-sm" :disabled="postsPage >= postsPages" @click="changePostsPage(postsPage + 1)">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="profile-section-panel" role="tabpanel">
+        <div v-if="likedPostsLoading" class="status-msg section-status">正在加载喜欢的文章...</div>
+        <div v-else-if="likedPostsError" class="status-msg error section-status">{{ likedPostsError }}</div>
+        <div v-else-if="likedPosts.length === 0" class="status-msg section-status">暂无喜欢的文章</div>
+        <div v-else class="post-list">
+          <article
+            class="post-card post-card--published"
+            v-for="post in likedPosts"
+            :key="post.id"
+            @click="router.push({ path: `/blog/${post.id}`, query: { from: 'profile' } })"
+          >
+            <h2 class="post-title">{{ post.title }}</h2>
+            <p v-if="post.summary" class="post-summary">{{ post.summary }}</p>
+            <div class="post-meta">
+              <span v-if="post.nickname">{{ post.nickname }}</span>
+              <span>{{ formatTime(post.createTime) }}</span>
+              <span>阅读 {{ formatCount(post.viewCount) }}</span>
+              <span>点赞 {{ formatCount(post.likeCount) }}</span>
+            </div>
+          </article>
+
+          <div class="pagination" v-if="likedPostsTotal > likedPostsSize || likedPostsPage > 1">
+            <button class="btn btn-ghost btn-sm" :disabled="likedPostsPage <= 1" @click="changeLikedPostsPage(likedPostsPage - 1)">上一页</button>
+            <span class="page-info">第 {{ likedPostsPage }} / {{ likedPostsPages }} 页</span>
+            <button class="btn btn-ghost btn-sm" :disabled="likedPostsPage >= likedPostsPages" @click="changeLikedPostsPage(likedPostsPage + 1)">下一页</button>
+          </div>
+        </div>
+      </section>
 
     </template>
 
@@ -798,8 +918,38 @@ onUnmounted(() => {
 .modal-fade-leave-active { transition: opacity 0.15s, transform 0.15s; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.96); }
 
-/* ── 我的文章 ─────────────────────────────────────────────────────────────────── */
-.section-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px; }
+/* ── 作品 / 喜欢 ──────────────────────────────────────────────────────────────── */
+.profile-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--border-color);
+}
+.profile-section-tab {
+  position: relative;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.profile-section-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.profile-section-tab.active { color: var(--text-primary); }
+.profile-section-tab.active::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -1px;
+  left: 18px;
+  height: 2px;
+  background: var(--text-primary);
+}
+.profile-section-tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.profile-section-panel { min-height: 180px; }
+.section-status { margin-top: 40px; }
 .post-list { display: flex; flex-direction: column; gap: 0; }
 .post-card {
   padding: 24px 16px;

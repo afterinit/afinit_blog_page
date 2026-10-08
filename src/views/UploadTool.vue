@@ -3,6 +3,7 @@ import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseMdToJson, processHtml, marked } from '../utils/mdParser.js'
 import { refreshHomePosts } from '../composables/useHomeRefresh.js'
+import { invalidateProfileLists } from '../composables/useProfileRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
 import { formatCount } from '../utils/countFormat.js'
@@ -85,6 +86,7 @@ async function publishArticle() {
     )
 
     refreshHomePosts()
+    invalidateProfileLists()
 
     showAlert(res.msg || res.message, () => {
       const isAdmin = userInfo.value && userInfo.value.role === 1;

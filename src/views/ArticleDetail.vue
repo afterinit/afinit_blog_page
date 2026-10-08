@@ -3,11 +3,14 @@ import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked, parseMdToJson, processHtml } from '../utils/mdParser.js'
 import { AuthError } from '../utils/request.js'
+import { getApiMessage, isApiSuccess } from '../utils/apiResponse.js'
 import { refreshHomePosts } from '../composables/useHomeRefresh.js'
+import { invalidateProfileLists } from '../composables/useProfileRefresh.js'
 import { useDialog } from '../composables/useDialog.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
 import { formatCount } from '../utils/countFormat.js'
+import { hasAuthSession } from '../utils/auth.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import { blogApi } from '../api/blog.js'
@@ -37,6 +40,14 @@ const articleData = ref(null)
 const loading = ref(false)
 const error = ref('')
 const articleReady = ref(false)
+const isLiked = ref(false)
+const likeLoading = ref(false)
+const likeAnimating = ref(false)
+let likeAnimationTimer = null
+
+const isPublicArticle = computed(() => (
+  route.query.type !== 'private' && route.query.type !== 'personal'
+))
 
 const isEditing = ref(false)
 const outline = ref([])
@@ -293,6 +304,7 @@ const submitEdit = async () => {
       parsedData.content
     )
     refreshHomePosts()
+    invalidateProfileLists()
     showAlert(res.msg || res.message, () => {
       isEditing.value = false
       fetchArticle() 
@@ -307,9 +319,10 @@ const confirmDelete = async () => {
   try {
     const res = await blogApi.deleteBlog(route.params.id)
     refreshHomePosts()
+    invalidateProfileLists()
     showAlert(res.msg || res.message, () => {
       showDeleteModal.value = false
-      router.replace('/')
+      goBackToList()
     })
   } catch(e) {
     if (e.isAuthError) return
@@ -604,8 +617,82 @@ const deleteBarrage = async (id) => {
   }
 }
 
+const playLikeAnimation = () => {
+  if (likeAnimationTimer) clearTimeout(likeAnimationTimer)
+  likeAnimating.value = false
+  requestAnimationFrame(() => {
+    likeAnimating.value = true
+    likeAnimationTimer = setTimeout(() => {
+      likeAnimating.value = false
+      likeAnimationTimer = null
+    }, 650)
+  })
+}
+
+const refreshLikeCount = async () => {
+  const res = await blogApi.getBlogDetail(route.params.id, 'public')
+  const latestLikeCount = Number(res?.data?.likeCount)
+  if (articleData.value && Number.isFinite(latestLikeCount) && latestLikeCount >= 0) {
+    // 详情接口还包含其他文章信息，这里只同步点赞数。
+    articleData.value.likeCount = latestLikeCount
+  }
+}
+
+const fetchLikeStatus = async () => {
+  if (!isPublicArticle.value || !hasAuthSession()) {
+    isLiked.value = false
+    return
+  }
+
+  try {
+    const res = await blogApi.getLikeStatus(route.params.id)
+    if (isApiSuccess(res) && typeof res.data === 'boolean') {
+      isLiked.value = res.data
+    }
+  } catch {
+    // 点赞状态是辅助信息，获取失败不影响文章正常阅读。
+    isLiked.value = false
+  }
+}
+
+const toggleLike = async () => {
+  if (!articleData.value || likeLoading.value || !isPublicArticle.value) return
+
+  const nextLiked = !isLiked.value
+  likeLoading.value = true
+
+  try {
+    const res = nextLiked
+      ? await blogApi.likeBlog(route.params.id)
+      : await blogApi.unlikeBlog(route.params.id)
+
+    // fetchApi 已统一校验 success，这里再次明确约束并显示后端原始提示。
+    if (!isApiSuccess(res)) {
+      throw new Error(getApiMessage(res, nextLiked ? '点赞失败' : '取消点赞失败'))
+    }
+
+    isLiked.value = nextLiked
+    if (nextLiked) playLikeAnimation()
+    showToast(getApiMessage(res, nextLiked ? '点赞成功' : '已取消点赞'))
+    invalidateProfileLists()
+
+    try {
+      await refreshLikeCount()
+    } catch {
+      // 点赞操作已经成功；刷新计数失败时保留原数字，避免误报为点赞失败。
+    }
+  } catch (err) {
+    if (!err.isAuthError) {
+      showToast(err.message || (nextLiked ? '点赞失败' : '取消点赞失败'), true)
+    }
+  } finally {
+    likeLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchArticle()
+  fetchLikeStatus()
   reportArticleView()
   loadBarrages()
   window.addEventListener('scroll', handleScroll, { passive: true })
@@ -615,6 +702,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (likeAnimationTimer) clearTimeout(likeAnimationTimer)
   window.removeEventListener('scroll', handleScroll)
   window.removeEventListener('click', handleGlobalClick)
   window.removeEventListener('touchstart', handleGlobalClick)
@@ -806,7 +894,28 @@ onUnmounted(() => {
           <span v-if="articleData.nickname">{{ articleData.nickname }}</span>
           <span v-if="articleData.date">{{ articleData.date }}</span>
           <span>阅读 {{ formatCount(articleData.viewCount) }}</span>
-          <span>点赞 {{ formatCount(articleData.likeCount) }}</span>
+          <button
+            v-if="isPublicArticle"
+            type="button"
+            class="like-button"
+            :class="{ 'is-liked': isLiked, 'is-animating': likeAnimating }"
+            :disabled="likeLoading"
+            :aria-pressed="isLiked"
+            :aria-label="isLiked ? '取消点赞' : '点赞'"
+            @click="toggleLike"
+          >
+            <span class="like-icon-wrap" aria-hidden="true">
+              <svg class="like-icon" viewBox="0 0 24 24">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" />
+              </svg>
+              <span v-if="likeAnimating" class="like-burst">
+                <i v-for="index in 8" :key="index" :style="{ '--angle': `${(index - 1) * 45}deg` }"></i>
+              </span>
+            </span>
+            <span>{{ isLiked ? '已点赞' : '点赞' }}</span>
+            <span class="like-count">{{ formatCount(articleData.likeCount) }}</span>
+          </button>
+          <span v-else>点赞 {{ formatCount(articleData.likeCount) }}</span>
         </div>
         <h1 class="article-title">{{ articleData.title }}</h1>
         <p v-if="articleData.summary" class="article-summary typora-style" v-html="articleData.summaryHtml"></p>
@@ -1090,6 +1199,113 @@ onUnmounted(() => {
 }
 .article-meta span { display: flex; align-items: center; gap: 6px; }
 
+.like-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.like-button:hover:not(:disabled) {
+  color: #ff4d6d;
+  border-color: rgba(255, 77, 109, 0.55);
+  background: rgba(255, 77, 109, 0.08);
+  transform: translateY(-1px);
+}
+
+.like-button:focus-visible {
+  outline: 2px solid #ff4d6d;
+  outline-offset: 2px;
+}
+
+.like-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.like-button.is-liked {
+  color: #ff4d6d;
+  border-color: rgba(255, 77, 109, 0.55);
+  background: rgba(255, 77, 109, 0.1);
+}
+
+.like-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.like-icon {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: fill 0.2s ease, transform 0.2s ease;
+}
+
+.like-button.is-liked .like-icon {
+  fill: currentColor;
+}
+
+.like-button.is-animating .like-icon {
+  animation: like-heart-pop 0.58s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.like-count {
+  min-width: 1ch;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.like-burst {
+  position: absolute;
+  inset: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.like-burst i {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 4px;
+  height: 4px;
+  background: #ff4d6d;
+  transform: rotate(var(--angle)) translateY(-5px) scale(0);
+  animation: like-particle 0.62s ease-out forwards;
+}
+
+@keyframes like-heart-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.48) rotate(-8deg); }
+  68% { transform: scale(0.88) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes like-particle {
+  0% { opacity: 0; transform: rotate(var(--angle)) translateY(-5px) scale(0); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--angle)) translateY(-25px) scale(1); }
+}
+
 /* Typora HTML 渲染细节样式 */
 .typora-style { font-size: 17px; line-height: 1.85; color: var(--text-primary); overflow-wrap: break-word; word-wrap: break-word; max-width: 100%; }
 .typora-style :deep(h1), .typora-style :deep(h2), .typora-style :deep(h3), .typora-style :deep(h4) { color: var(--text-primary); font-weight: 700; margin-top: 2em; margin-bottom: 1em; letter-spacing: -0.01em; }
@@ -1304,6 +1520,11 @@ onUnmounted(() => {
     gap: 12px !important;
   }
 
+  .like-button {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
   .editor-textarea {
     height: 60vh;
   }
@@ -1326,6 +1547,18 @@ onUnmounted(() => {
   .action-buttons .btn {
     font-size: 12px;
     padding: 6px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .like-button,
+  .like-icon {
+    transition: none;
+  }
+
+  .like-button.is-animating .like-icon,
+  .like-burst i {
+    animation: none;
   }
 }
 
