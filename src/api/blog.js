@@ -1,4 +1,5 @@
-import { fetchApi } from './base.js'
+import { fetchApi, fetchJson } from './base.js'
+import { withQuery } from '@/utils/url.js'
 
 /**
  * 解析列表/详情作用域
@@ -20,18 +21,17 @@ export const blogApi = {
    */
   getBlogList(page = 1, size = 15, scope = 'public', search = '') {
     const resolved = resolveScope(scope)
-    const endpoint = resolved === 'private'
-      ? `/blog/private?page=${page}&size=${size}`
+    const path = resolved === 'private'
+      ? '/blog/private'
       : resolved === 'personal'
-        ? `/blog/personal?page=${page}&size=${size}`
-        : `/blog?page=${page}&size=${size}`
-    const query = search ? `&query=${encodeURIComponent(search)}` : ''
-    return fetchApi(`${endpoint}${query}`)
+        ? '/blog/personal'
+        : '/blog'
+    return fetchApi(withQuery(path, { page, size, query: search }))
   },
 
   /** 获取当前用户点赞的文章 */
   getLikedBlogs(page = 1, size = 10) {
-    return fetchApi(`/blog/like?page=${page}&size=${size}`)
+    return fetchApi(withQuery('/blog/like', { page, size }))
   },
 
   /**
@@ -87,10 +87,9 @@ export const blogApi = {
    * @param {string} content
    */
   createBlog(title, summary, content) {
-    return fetchApi('/blog', {
+    return fetchJson('/blog', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, summary, content })
+      body: { title, summary, content }
     })
   },
 
@@ -102,10 +101,9 @@ export const blogApi = {
    * @param {string} content
    */
   updateBlog(id, title, summary, content) {
-    return fetchApi(`/blog/${id}`, {
+    return fetchJson(`/blog/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, summary, content })
+      body: { title, summary, content }
     })
   },
 

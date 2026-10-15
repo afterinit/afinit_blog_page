@@ -38,7 +38,7 @@ useTheme()
 .auth-modal-content {
   background: var(--bg-secondary); padding: 30px 40px;
   text-align: center; border: 1px solid var(--border-color);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   min-width: 300px;
 }
 

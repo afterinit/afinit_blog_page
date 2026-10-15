@@ -1,4 +1,5 @@
 import { fetchApi } from './base.js'
+import { withQuery } from '@/utils/url.js'
 
 /**
  * 管理员专属接口
@@ -11,8 +12,7 @@ export const adminApi = {
    * @param {string} keyword
    */
   getUsers(page = 1, size = 15, keyword = '') {
-    const query = keyword ? `&query=${encodeURIComponent(keyword)}` : ''
-    return fetchApi(`/admin?page=${page}&size=${size}${query}`)
+    return fetchApi(withQuery('/admin', { page, size, query: keyword }))
   },
 
   /**
@@ -21,7 +21,7 @@ export const adminApi = {
    * @param {number} status
    */
   updateUserStatus(id, status) {
-    return fetchApi(`/admin/${id}?status=${status}`, {
+    return fetchApi(withQuery(`/admin/${id}`, { status }), {
       method: 'PUT'
     })
   },

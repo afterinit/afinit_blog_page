@@ -11,6 +11,8 @@
 
 import { ref } from 'vue'
 import { removeToken } from '../utils/auth.js'
+import { appConfig } from '@/config/app.js'
+import { ROUTE_PATHS } from '@/constants/routes.js'
 
 export const showAuthExpiredModal = ref(false)
 
@@ -21,7 +23,8 @@ export function onAuthExpired() {
 
 export function closeAuthExpiredModal() {
   showAuthExpiredModal.value = false
-  window.location.assign(`${import.meta.env.BASE_URL}login`)
+  const base = appConfig.baseUrl.replace(/\/$/, '')
+  window.location.assign(`${base}${ROUTE_PATHS.LOGIN}`)
 }
 
 export function cancelAuthExpiredModal() {

@@ -6,6 +6,7 @@ import { useTurnstile } from '../composables/useTurnstile.js'
 import { setToken } from '../utils/auth.js'
 import { authApi } from '../api/auth.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 
 const { markLoggedIn } = useUserInfo()
 
@@ -70,7 +71,7 @@ const handleLogin = async () => {
     if (res.data?.accessToken) {
       setToken(res.data.accessToken, res.data.refreshToken, res.data.tokenType, rememberMe.value)
       markLoggedIn()           // 更新共享 ref，BlogList 挂载时直接拿到已登录状态
-      await router.push('/')
+      await router.push({ name: ROUTE_NAMES.HOME })
     } else {
       errorMsg.value = res.msg || res.message
       resetTurnstile()
@@ -145,7 +146,7 @@ onUnmounted(() => turnstile.cleanup())
           <input type="checkbox" v-model="rememberMe" :disabled="loading" />
           <span>记住我</span>
         </label>
-        <span class="forgot-link" @click="router.push('/forgot-password')">忘记密码？</span>
+        <span class="forgot-link" @click="router.push({ name: ROUTE_NAMES.FORGOT_PASSWORD })">忘记密码？</span>
       </div>
 
       <!-- Turnstile 挂载点 -->
@@ -162,10 +163,10 @@ onUnmounted(() => turnstile.cleanup())
         >
           {{ loading ? '登录中…' : '登录' }}
         </button>
-        <button type="button" class="btn home-btn" @click="router.push('/')" :disabled="loading">
+        <button type="button" class="btn home-btn" @click="router.push({ name: ROUTE_NAMES.HOME })" :disabled="loading">
           返回主页
         </button>
-        <button type="button" class="btn register-btn" @click="router.push('/register')" :disabled="loading">
+        <button type="button" class="btn register-btn" @click="router.push({ name: ROUTE_NAMES.REGISTER })" :disabled="loading">
           没有账号？去注册
         </button>
       </form>

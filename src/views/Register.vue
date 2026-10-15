@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { authApi } from '../api/auth.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 
 // ─── 状态 ──────────────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ async function handleRegister() {
 
     // ── 注册成功：提示后跳转登录页 ────────────────────────────────────────────
     showSuccess(res.msg || res.message)
-    setTimeout(() => router.push('/login'), 1500)
+    setTimeout(() => router.push({ name: ROUTE_NAMES.LOGIN }), 1500)
   } catch (err) {
     showError(err.message)
   } finally {
@@ -301,7 +302,7 @@ onUnmounted(() => {
       </button>
 
       <!-- 跳转登录 -->
-      <button class="btn secondary-btn" @click="router.push('/login')" :disabled="isSubmitting">
+      <button class="btn secondary-btn" @click="router.push({ name: ROUTE_NAMES.LOGIN })" :disabled="isSubmitting">
         已有账号，去登录
       </button>
     </div>

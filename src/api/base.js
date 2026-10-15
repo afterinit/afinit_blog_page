@@ -1,7 +1,8 @@
 import request from '../utils/request.js'
 import { assertApiSuccess } from '../utils/apiResponse.js'
+import { httpConfig } from '@/config/http.js'
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+export const API_BASE = httpConfig.baseUrl
 
 /**
  * 封装底层的 API 请求逻辑，自动拼接基础 URL，解析 JSON，并进行成功断言。
@@ -34,6 +35,22 @@ export async function fetchApi(endpoint, options = {}) {
   assertApiSuccess(response, res)
 
   return res
+}
+
+/** JSON 接口的统一入口，集中处理序列化和 Content-Type。 */
+function createJsonOptions({ body, headers, ...options } = {}) {
+  return {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }
+}
+
+export function fetchJson(endpoint, options = {}) {
+  return fetchApi(endpoint, createJsonOptions(options))
 }
 
 /**
@@ -69,4 +86,9 @@ export async function fetchBlob(endpoint, options = {}) {
   }
 
   return { blob, filename, response }
+}
+
+/** JSON 请求并下载二进制文件。 */
+export function fetchJsonBlob(endpoint, options = {}) {
+  return fetchBlob(endpoint, createJsonOptions(options))
 }

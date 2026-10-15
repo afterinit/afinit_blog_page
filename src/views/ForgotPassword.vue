@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { authApi } from '../api/auth.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 
 const router = useRouter()
 
@@ -134,7 +135,7 @@ async function handleResetPassword() {
     )
     
     showSuccess(res.msg || res.message)
-    setTimeout(() => router.push('/login'), 1500)
+    setTimeout(() => router.push({ name: ROUTE_NAMES.LOGIN }), 1500)
   } catch (err) {
     showError(err.message)
   } finally {
@@ -223,7 +224,7 @@ onUnmounted(() => {
       </button>
 
       <!-- 返回登录 -->
-      <button class="btn secondary-btn" @click="router.push('/login')" :disabled="isSubmitting">
+      <button class="btn secondary-btn" @click="router.push({ name: ROUTE_NAMES.LOGIN })" :disabled="isSubmitting">
         返回登录
       </button>
     </div>

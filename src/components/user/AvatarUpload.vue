@@ -6,8 +6,8 @@ import {
   ref,
   watch,
 } from 'vue'
-import { syncTokenAfterAvatarUpload } from '../utils/request.js'
-import { userApi } from '../api/user.js'
+import { syncTokenAfterAvatarUpload } from '@/utils/request.js'
+import { userApi } from '@/api/user.js'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const OUTPUT_SIZE = 640

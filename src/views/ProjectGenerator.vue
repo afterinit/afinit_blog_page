@@ -1,7 +1,8 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { projectApi } from '../../api/project.js'
+import { projectApi } from '@/api/project.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 import {
   ElButton,
   ElCard,
@@ -193,7 +194,7 @@ const generateCustomProject = async () => {
   <div class="generator-container">
     <div class="generator-box">
       <div class="header">
-        <button class="back-btn" @click="router.push('/')">← 返回</button>
+        <button class="back-btn" @click="router.push({ name: ROUTE_NAMES.HOME })">← 返回</button>
         <h2>项目构建器</h2>
       </div>
 
@@ -333,8 +334,6 @@ const generateCustomProject = async () => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 .generator-container {
   display: flex;
   justify-content: center;
@@ -342,7 +341,7 @@ const generateCustomProject = async () => {
   min-height: 100vh;
   background-color: #fdfdfd;
   padding: 40px 20px 100px;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
   color: #333;
 }
 

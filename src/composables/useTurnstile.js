@@ -2,10 +2,11 @@
  * Cloudflare Turnstile 人机验证 — 全局单脚本、多挂载点复用。
  */
 import { ref } from 'vue'
+import { appConfig } from '@/config/app.js'
 
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
 const TURNSTILE_SCRIPT_ID = 'cf-turnstile-script'
-const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
+const SITE_KEY = appConfig.turnstileSiteKey
 
 /**
  * @param {object} options

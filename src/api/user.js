@@ -1,4 +1,4 @@
-import { fetchApi } from './base.js'
+import { fetchApi, fetchJson } from './base.js'
 
 /**
  * 用户自助接口（当前登录用户）
@@ -19,10 +19,9 @@ export const userApi = {
    * @param {string} nickname
    */
   updateNickname(nickname) {
-    return fetchApi('/user/nickname', {
+    return fetchJson('/user/nickname', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname })
+      body: { nickname }
     })
   },
 
@@ -31,10 +30,9 @@ export const userApi = {
    * @param {object} data
    */
   updateUserInfo(data) {
-    return fetchApi('/user/info', {
+    return fetchJson('/user/info', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: data
     })
   },
 

@@ -2,24 +2,19 @@
 import { ref, reactive, onMounted, onUnmounted, onActivated } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
-import { registerHomeRefresh } from '../composables/useHomeRefresh.js'
-import { useDialog } from '../composables/useDialog.js'
-import { removeToken, hasAuthSession } from '../utils/auth.js'
-import { formatCount } from '../utils/countFormat.js'
-import { useUserInfo } from '../composables/useUserInfo.js'
-import { useTheme } from '../composables/useTheme.js'
-import ThemeToggle from '../components/ThemeToggle.vue'
-import loolcLogo from '../assets/loolc-logo.png'
-import loolcLogoDark from '../assets/loolc-logo-dark.png'
-import { AuthError } from '../utils/request.js'
-import { blogApi } from '../api/blog.js'
-import { userApi } from '../api/user.js'
-import { adminApi } from '../api/admin.js'
+import AppHeader from '@/components/layout/AppHeader.vue'
+import { registerHomeRefresh } from '@/composables/useHomeRefresh.js'
+import { useDialog } from '@/composables/useDialog.js'
+import { useUserInfo } from '@/composables/useUserInfo.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
+import { removeToken, hasAuthSession } from '@/utils/auth.js'
+import { formatCount } from '@/utils/countFormat.js'
+import { AuthError } from '@/utils/request.js'
+import { blogApi } from '@/api/blog.js'
+import { userApi } from '@/api/user.js'
+import { adminApi } from '@/api/admin.js'
 
 defineOptions({ name: 'BlogList' })
-
-const { currentTheme, toggleTheme } = useTheme()
-
 
 const router = useRouter()
 const {
@@ -230,30 +225,13 @@ function deletePost(id) {
 const logoutLoading = ref(false)
 
 async function logout() {
-  showDropdown.value  = false
   logoutLoading.value = true
   await new Promise(r => setTimeout(r, 400))
   removeToken()
   clearUserInfo()
   currentTab.value = 'public'
   logoutLoading.value = false
-  router.push('/')
-}
-
-// ─── 用户下拉菜单 ──────────────────────────────────────────────────────────────
-
-const showDropdown = ref(false)
-const userMenuRef  = ref(null)
-const showToolsDropdown = ref(false)
-const toolsMenuRef = ref(null)
-
-function onOutsideClick(e) {
-  if (userMenuRef.value && !userMenuRef.value.contains(e.target)) {
-    showDropdown.value = false
-  }
-  if (toolsMenuRef.value && !toolsMenuRef.value.contains(e.target)) {
-    showToolsDropdown.value = false
-  }
+  router.push({ name: ROUTE_NAMES.HOME })
 }
 
 // ─── 生命周期 ──────────────────────────────────────────────────────────────────
@@ -278,7 +256,6 @@ let isInitialMount = true
 let refreshOnNextActivation = false
 
 onMounted(async () => {
-  document.addEventListener('click', onOutsideClick)
   unregisterHomeRefresh = registerHomeRefresh(refreshHome)
   try {
     await refreshHome()
@@ -295,11 +272,10 @@ onActivated(() => {
 
 onBeforeRouteLeave((to) => {
   // 阅读文章后返回时沿用 keep-alive 缓存；进入其它页面后再回来则重新加载。
-  refreshOnNextActivation = to.name !== 'postDetail'
+  refreshOnNextActivation = to.name !== ROUTE_NAMES.POST_DETAIL
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', onOutsideClick)
   unregisterHomeRefresh?.()
 })
 </script>
@@ -313,79 +289,14 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <!-- 顶部栏 -->
-    <header class="header">
-      <button
-        type="button"
-        class="brand-home"
-        aria-label="返回 LOOLC 首页"
-        @click="router.push('/')"
-      >
-        <img
-          :src="currentTheme === 'dark' ? loolcLogoDark : loolcLogo"
-          alt="LOOLC"
-          class="brand-logo"
-        />
-      </button>
-      <div class="header-actions">
-        <a href="mailto:afinit@loolc.com" class="contact-link" title="afinit@loolc.com">联系作者</a>
-        <ThemeToggle />
-        <template v-if="isLoggedIn">
-          <!-- 发布文章按钮 -->
-          <div class="user-menu" @click="router.push('/upload')" style="padding: 5px 10px;">
-            <span class="tools-btn-label" style="padding-left: 0;">发布文章</span>
-          </div>
-          <!-- 工具菜单 -->
-          <div class="user-menu" ref="toolsMenuRef" @click.stop="showToolsDropdown = !showToolsDropdown; showDropdown = false">
-            <span class="tools-btn-label">工具</span>
-            <span class="dropdown-caret" :class="{ rotated: showToolsDropdown }">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M1.5 3.5L5 7L8.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-            <Transition name="dropdown">
-              <div v-if="showToolsDropdown" class="dropdown-menu">
-                <div class="dropdown-item" @click.stop="() => { showToolsDropdown = false; router.push('/generator') }">
-                  项目构建器
-                </div>
-              </div>
-            </Transition>
-          </div>
-
-          <!-- 用户头像菜单 -->
-          <div class="user-menu" ref="userMenuRef" @click.stop="showDropdown = !showDropdown; showToolsDropdown = false">
-            <div class="user-avatar">
-              <img
-                v-if="userInfo?.avatar"
-                :key="`${userInfo.avatar}-${avatarCacheKey}`"
-                :src="resolveAvatarUrl(userInfo.avatar)"
-                :alt="userInfo?.nickname"
-                class="avatar-img"
-              />
-              <span v-else class="avatar-letter">{{ avatarLetter }}</span>
-            </div>
-            <span class="user-nickname">{{ userInfo?.nickname || '用户' }}</span>
-            <span class="dropdown-caret" :class="{ rotated: showDropdown }">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M1.5 3.5L5 7L8.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-            <Transition name="dropdown">
-              <div v-if="showDropdown" class="dropdown-menu">
-                <div class="dropdown-item" @click.stop="() => { showDropdown = false; router.push('/profile') }">
-                  个人资料
-                </div>
-                <div class="dropdown-divider"></div>
-                <div class="dropdown-item danger" @click.stop="logout">退出登录</div>
-              </div>
-            </Transition>
-          </div>
-        </template>
-        <template v-else>
-          <button class="btn btn-outline" @click="router.push('/login')">登录</button>
-        </template>
-      </div>
-    </header>
+    <AppHeader
+      :is-logged-in="isLoggedIn"
+      :user-info="userInfo"
+      :avatar-url="resolveAvatarUrl(userInfo?.avatar)"
+      :avatar-letter="avatarLetter"
+      :avatar-cache-key="avatarCacheKey"
+      @logout="logout"
+    />
 
     <!-- 标签页切换 (仅登录后显示) -->
     <div class="tabs-container" v-if="isLoggedIn">
@@ -477,7 +388,7 @@ onUnmounted(() => {
             v-for="post in posts"
             :key="post.id"
             @click="router.push({
-              name: 'postDetail',
+              name: ROUTE_NAMES.POST_DETAIL,
               params: { id: post.id },
               query: currentTab === 'private'
                 ? { type: userInfo?.role === 1 ? 'private' : 'personal' }
@@ -550,36 +461,6 @@ onUnmounted(() => {
 <style scoped>
 .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
 
-.header {
-  margin-bottom: 50px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 20px;
-}
-.brand-home {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  line-height: 0;
-}
-.brand-logo {
-  display: block;
-  width: 168px;
-  height: auto;
-  transition: transform 0.2s ease;
-}
-.brand-home:hover .brand-logo { transform: translateY(-1px); }
-.brand-home:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 6px; }
-.header-actions { display: flex; align-items: center; gap: 16px; }
-
-.contact-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; transition: color 0.2s; }
-.contact-link:hover { color: var(--text-primary); }
-
 .btn { padding: 6px 14px; background-color: var(--text-primary); color: var(--bg-primary); border: 1px solid var(--text-primary); font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .btn:hover:not(:disabled) { background-color: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-outline { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
@@ -645,50 +526,6 @@ onUnmounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.user-menu {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 5px 10px 5px 5px;
-  border: 1px solid var(--border-color);
-  cursor: pointer; user-select: none;
-  transition: background 0.2s, border-color 0.2s;
-}
-.user-menu:hover { background: var(--bg-hover); border-color: var(--text-secondary); }
-.tools-btn-label { font-size: 13px; color: var(--text-primary); font-weight: 500; padding-left: 5px; }
-
-.user-avatar {
-  width: 28px; height: 28px;
-  background: var(--bg-secondary); overflow: hidden; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
-}
-.avatar-img    { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.avatar-letter { color: var(--text-primary); font-size: 12px; font-weight: 600; }
-
-.user-nickname {
-  font-size: 13px; color: var(--text-primary); font-weight: 500;
-  max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.dropdown-caret { color: var(--text-secondary); display: flex; align-items: center; transition: transform 0.2s; }
-.dropdown-caret.rotated { transform: rotate(180deg); }
-
-.dropdown-menu {
-  position: absolute; top: calc(100% + 6px); right: 0;
-  background: var(--bg-secondary); border: 1px solid var(--border-color);
-  min-width: 130px;
-  z-index: 200; overflow: hidden;
-}
-.dropdown-item { padding: 10px 16px; font-size: 13px; color: var(--text-primary); cursor: pointer; transition: background 0.15s; white-space: nowrap; }
-.dropdown-item:hover { background: var(--bg-hover); }
-.dropdown-item.danger { color: var(--danger-color); }
-.dropdown-item.danger:hover { background: rgba(255, 77, 79, 0.1); }
-.dropdown-divider { height: 1px; background: var(--border-color); }
-
-.dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
-.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px); }
-
 .input-field { width: 100%; padding: 8px 12px; background: transparent; color: var(--text-primary); border: 1px solid var(--border-color); font-size: 14px; box-sizing: border-box; }
 .input-field:focus { border-color: var(--text-primary); outline: none; }
 
@@ -708,27 +545,14 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .container { padding: 20px 16px 40px; }
-  .header {
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 28px;
-    padding-bottom: 16px;
-    align-items: center;
-  }
-  .brand-logo { width: 140px; }
-  .header-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: flex-end;
-    align-items: center;
-  }
-  .contact-link { font-size: 13px; margin-right: auto; }
-  .user-nickname { display: none; }
   .tabs { gap: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-btn { font-size: 14px; white-space: nowrap; flex-shrink: 0; }
   .post-card { padding: 18px 8px; }
   .post-title { font-size: 16px; }
   .inline-actions { width: 100%; margin-left: 0; margin-top: 4px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding-inline: 12px; }
 }
 </style>

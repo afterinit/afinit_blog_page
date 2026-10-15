@@ -2,6 +2,7 @@ import axios from 'axios'
 import { getToken, getRefreshToken, getTokenType, setToken, isRemembered } from './auth.js'
 import { parseJsonSafe } from './json.js'
 import { onAuthExpired } from '../composables/useAuthGuard.js'
+import { HTTP_HEADERS, httpConfig } from '@/config/http.js'
 
 // ─── AuthError ─────────────────────────────────────────────────────────────────
 
@@ -16,13 +17,13 @@ export class AuthError extends Error {
 // ─── Axios 实例 ────────────────────────────────────────────────────────────────
 
 const http = axios.create({
-  timeout: 60000,
+  timeout: httpConfig.timeout,
   validateStatus: () => true,
   transformResponse: [(data) => data],
 })
 
 const refreshHttp = axios.create({
-  timeout: 60000,
+  timeout: httpConfig.timeout,
   validateStatus: () => true,
   transformResponse: [(data) => data],
 })
@@ -30,11 +31,11 @@ const refreshHttp = axios.create({
 // ─── 工具函数 ──────────────────────────────────────────────────────────────────
 
 function isAuthRequest(url = '') {
-  return url.includes('/user/login') || url.includes('/user/register') || url.includes('/user/refresh')
+  return httpConfig.publicAuthPaths.some(path => url.includes(path))
 }
 
 function isRefreshRequest(url = '') {
-  return url.includes('/user/refresh')
+  return url.includes(httpConfig.refreshPath)
 }
 
 function parseBody(data) {
@@ -123,7 +124,7 @@ function extractTokenData(result) {
   return {
     accessToken: raw?.accessToken ?? raw?.access_token,
     refreshToken: raw?.refreshToken ?? raw?.refresh_token,
-    tokenType: raw?.tokenType ?? raw?.token_type ?? 'Bearer',
+    tokenType: raw?.tokenType ?? raw?.token_type ?? httpConfig.defaultTokenType,
   }
 }
 
@@ -131,14 +132,16 @@ async function refreshAccessToken() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new AuthError()
 
-  const apiUrl = import.meta.env.VITE_API_BASE_URL
-  const headers = { 'X-Client-Type': 'web', 'X-Refresh-Token': refreshToken }
+  const headers = {
+    [HTTP_HEADERS.CLIENT_TYPE]: httpConfig.clientType,
+    [HTTP_HEADERS.REFRESH_TOKEN]: refreshToken,
+  }
   const token = getToken()
   if (token) headers.Authorization = `${getTokenType()} ${token}`
 
   let response;
   try {
-    response = await refreshHttp.post(`${apiUrl}/user/refresh`, null, { headers })
+    response = await refreshHttp.post(`${httpConfig.baseUrl}${httpConfig.refreshPath}`, null, { headers })
   } catch (err) {
     throw new Error('网络繁忙请稍后再试')
   }
@@ -187,7 +190,7 @@ export async function syncTokenAfterAvatarUpload(uploadStartedAt) {
 
 http.interceptors.request.use((config) => {
   config.headers = config.headers || {}
-  config.headers['X-Client-Type'] = 'web'
+  config.headers[HTTP_HEADERS.CLIENT_TYPE] = httpConfig.clientType
 
   if (!isAuthRequest(config.url)) {
     const token = getToken()

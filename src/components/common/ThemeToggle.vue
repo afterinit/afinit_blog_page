@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { useTheme } from '../composables/useTheme.js'
+import { useTheme } from '@/composables/useTheme.js'
 
 const { currentTheme, toggleTheme } = useTheme()
 const btnRef = ref(null)

@@ -1,4 +1,4 @@
-import { fetchApi } from './base.js'
+import { fetchJson } from './base.js'
 
 export const authApi = {
   /**
@@ -8,10 +8,9 @@ export const authApi = {
    * @param {string} cfToken
    */
   login(username, password, cfToken) {
-    return fetchApi('/user/login', {
+    return fetchJson('/user/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, cfToken })
+      body: { username, password, cfToken }
     })
   },
 
@@ -23,10 +22,9 @@ export const authApi = {
    * @param {string} code - 验证码
    */
   register(username, password, email, code) {
-    return fetchApi('/user/register', {
+    return fetchJson('/user/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, email, code })
+      body: { username, password, email, code }
     })
   },
 
@@ -35,10 +33,9 @@ export const authApi = {
    * @param {object} payload - { cfToken, to } (注册) 或 { cfToken, username } (找回密码)
    */
   sendCode(payload) {
-    return fetchApi('/user/code', {
+    return fetchJson('/user/code', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: payload
     })
   },
 
@@ -49,10 +46,9 @@ export const authApi = {
    * @param {string} code
    */
   resetPassword(username, password, code) {
-    return fetchApi('/user/password', {
+    return fetchJson('/user/password', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, code })
+      body: { username, password, code }
     })
   }
 }

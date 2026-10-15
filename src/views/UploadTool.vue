@@ -8,9 +8,10 @@ import { useDialog } from '../composables/useDialog.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
 import { formatCount } from '../utils/countFormat.js'
 import { useTheme } from '../composables/useTheme.js'
-import ThemeToggle from '../components/ThemeToggle.vue'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { blogApi } from '../api/blog.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 const router = useRouter()
 const { currentTheme, toggleTheme } = useTheme()
 const { userInfo } = useUserInfo()
@@ -94,12 +95,12 @@ async function publishArticle() {
       
       if (newId) {
         router.push({
-          name: 'postDetail',
+          name: ROUTE_NAMES.POST_DETAIL,
           params: { id: newId },
           query: isAdmin ? {} : { type: 'personal' }
         });
       } else {
-        router.push('/');
+        router.push({ name: ROUTE_NAMES.HOME });
       }
     });
     
@@ -227,7 +228,7 @@ const handleKeydown = (e) => {
   <div class="container">
     <div class="header">
       <div class="header-left">
-        <button class="back-btn" @click="router.push('/')">← 返回列表</button>
+        <button class="back-btn" @click="router.push({ name: ROUTE_NAMES.HOME })">← 返回列表</button>
         <h1>Markdown 编辑器</h1>
       </div>
       <div class="header-actions">
@@ -294,9 +295,7 @@ const handleKeydown = (e) => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg-primary); }
+.container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; height: 100vh; display: flex; flex-direction: column; font-family: var(--font-sans); background: var(--bg-primary); }
 .header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .header-left { display: flex; align-items: center; gap: 20px; }
 .header-actions { display: flex; gap: 12px; }
@@ -307,7 +306,7 @@ const handleKeydown = (e) => {
 .editor-container { display: flex; gap: 0; flex: 1; min-height: 0; }
 .editor-pane { flex: 1; display: flex; flex-direction: column; background: var(--bg-primary); border: 1px solid var(--border-color); overflow: hidden; }
 .pane-header { padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-secondary); }
-.text-input { flex: 1; width: 100%; border: none; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; color: var(--text-primary); resize: none; background: transparent; outline: none; box-sizing: border-box; }
+.text-input { flex: 1; width: 100%; border: none; padding: 20px; font-family: var(--font-mono); font-size: 14px; line-height: 1.6; color: var(--text-primary); resize: none; background: transparent; outline: none; box-sizing: border-box; }
 
 .btn { padding: 6px 16px; background-color: var(--text-primary); color: var(--bg-primary); border: 1px solid var(--text-primary); font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .btn:hover { background-color: var(--accent-hover); }
@@ -384,7 +383,7 @@ const handleKeydown = (e) => {
   font-style: italic;
 }
 .typora-style :deep(code) { 
-  font-family: 'JetBrains Mono', monospace; 
+  font-family: var(--font-mono);
   background-color: var(--bg-hover); 
   padding: 3px 6px; 
   font-size: 0.85em; 

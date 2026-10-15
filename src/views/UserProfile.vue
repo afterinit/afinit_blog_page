@@ -8,12 +8,13 @@ import { useTurnstile } from '../composables/useTurnstile.js'
 import { hasAuthSession, isAccessTokenExpired } from '../utils/auth.js'
 import { formatCount } from '../utils/countFormat.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
-import AvatarUpload from '../components/AvatarUpload.vue'
+import AvatarUpload from '@/components/user/AvatarUpload.vue'
 import { useTheme } from '../composables/useTheme.js'
-import ThemeToggle from '../components/ThemeToggle.vue'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { userApi } from '../api/user.js'
 import { authApi } from '../api/auth.js'
 import { blogApi } from '../api/blog.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 import {
   registerProfileListsRefresh,
   refreshInvalidatedProfileLists,
@@ -260,7 +261,7 @@ function useDeleteAccount() {
       
       const { clearUserInfo } = useUserInfo()
       clearUserInfo()
-      router.push('/login')
+      router.push({ name: ROUTE_NAMES.LOGIN })
     } catch (e) {
       error.value = e.message
     } finally {
@@ -369,12 +370,12 @@ async function onAvatarUpdated(url) {
 // ─── 生命周期 ──────────────────────────────────────────────────────────────────
 
 async function refreshProfile() {
-  if (!hasAuthSession()) { router.push('/login'); return }
+  if (!hasAuthSession()) { router.push({ name: ROUTE_NAMES.LOGIN }); return }
   if (!userInfo.value || isAccessTokenExpired()) pageLoading.value = true
   try {
     await fetchUserInfo()
     if (!hasAuthSession()) {
-      router.push('/login')
+      router.push({ name: ROUTE_NAMES.LOGIN })
       return
     }
     fetchPersonalPosts()
@@ -410,7 +411,7 @@ onActivated(async () => {
 
 onBeforeRouteLeave((to) => {
   // 从自己的文章返回时保留个人资料和文章列表；其它入口重新进入时刷新。
-  refreshOnNextActivation = to.name !== 'postDetail'
+  refreshOnNextActivation = to.name !== ROUTE_NAMES.POST_DETAIL
 })
 
 onUnmounted(() => {
@@ -522,7 +523,7 @@ onUnmounted(() => {
             :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
             v-for="post in personalPosts"
             :key="post.id"
-            @click="router.push({ name: 'postDetail', params: { id: post.id }, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
+            @click="router.push({ name: ROUTE_NAMES.POST_DETAIL, params: { id: post.id }, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
           >
             <h2 class="post-title">
               <span v-if="post.status === 0" class="status-tag">未发布</span>
@@ -554,7 +555,7 @@ onUnmounted(() => {
             class="post-card post-card--published"
             v-for="post in likedPosts"
             :key="post.id"
-            @click="router.push({ name: 'postDetail', params: { id: post.id }, query: { from: 'profile' } })"
+            @click="router.push({ name: ROUTE_NAMES.POST_DETAIL, params: { id: post.id }, query: { from: 'profile' } })"
           >
             <h2 class="post-title">{{ post.title }}</h2>
             <p v-if="post.summary" class="post-summary">{{ post.summary }}</p>

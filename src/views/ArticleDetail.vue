@@ -11,16 +11,20 @@ import { useUserInfo } from '../composables/useUserInfo.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
 import { formatCount } from '../utils/countFormat.js'
 import { useTheme } from '../composables/useTheme.js'
-import ThemeToggle from '../components/ThemeToggle.vue'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { blogApi } from '../api/blog.js'
 import { barrageApi } from '../api/barrage.js'
+import { ROUTE_NAMES } from '@/constants/routes.js'
 const route = useRoute()
 const router = useRouter()
 const { userInfo, isLoggedIn } = useUserInfo()
 const { currentTheme, toggleTheme } = useTheme()
 
 function goBackToList() {
-  const targetPath = route.query.from === 'profile' ? '/profile' : '/'
+  const targetRoute = {
+    name: route.query.from === 'profile' ? ROUTE_NAMES.PROFILE : ROUTE_NAMES.HOME,
+  }
+  const targetPath = router.resolve(targetRoute).href
   const previousPath = window.history.state?.back
   const previousPathname = typeof previousPath === 'string'
     ? previousPath.split(/[?#]/, 1)[0]
@@ -31,7 +35,7 @@ function goBackToList() {
     router.back()
   } else {
     // 直接打开详情页时没有可返回的站内列表，用目标列表替换当前记录。
-    router.replace(targetPath)
+    router.replace(targetRoute)
   }
 }
 
@@ -970,15 +974,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 /* ===== 整体布局 ===== */
 .page-wrapper { 
   display: flex; 
   align-items: flex-start;
   max-width: 1200px;
   margin: 0 auto;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
@@ -1164,7 +1166,7 @@ onUnmounted(() => {
 /* 编辑模式样式 */
 .edit-mode { display: flex; flex-direction: column; background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 24px; }
 .edit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);}
-.editor-textarea { width: 100%; height: 60vh; padding: 20px; border: 1px solid var(--border-color); font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; resize: vertical; box-sizing: border-box; outline: none; transition: border-color 0.3s; background: transparent; color: var(--text-primary); }
+.editor-textarea { width: 100%; height: 60vh; padding: 20px; border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; resize: vertical; box-sizing: border-box; outline: none; transition: border-color 0.3s; background: transparent; color: var(--text-primary); }
 .editor-textarea:focus { border-color: var(--text-primary); }
 
 .form-actions { display: flex; gap: 12px; margin-top: 24px; }
@@ -1340,7 +1342,7 @@ onUnmounted(() => {
   font-style: italic;
 }
 .typora-style :deep(code) { 
-  font-family: 'JetBrains Mono', monospace; 
+  font-family: var(--font-mono);
   background-color: var(--bg-hover); 
   padding: 3px 6px; 
   font-size: 0.85em; 

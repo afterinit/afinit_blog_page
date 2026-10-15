@@ -1,8 +1,13 @@
-const TokenKey = 'afinit-access-token'
-const RefreshTokenKey = 'afinit-refresh-token'
-const TokenTypeKey = 'afinit-token-type'
-const RememberMeKey = 'afinit-remember-me'
-const UserInfoKey = 'afinit-user-info'
+import { STORAGE_KEYS } from '@/constants/storage.js'
+import { httpConfig } from '@/config/http.js'
+
+const {
+  ACCESS_TOKEN: TokenKey,
+  REFRESH_TOKEN: RefreshTokenKey,
+  TOKEN_TYPE: TokenTypeKey,
+  REMEMBER_ME: RememberMeKey,
+  USER_INFO: UserInfoKey,
+} = STORAGE_KEYS
 
 export function getToken() {
   return sessionStorage.getItem(TokenKey) || localStorage.getItem(TokenKey)
@@ -36,7 +41,7 @@ export function hasAuthSession() {
 }
 
 export function getTokenType() {
-  return sessionStorage.getItem(TokenTypeKey) || localStorage.getItem(TokenTypeKey) || 'Bearer'
+  return sessionStorage.getItem(TokenTypeKey) || localStorage.getItem(TokenTypeKey) || httpConfig.defaultTokenType
 }
 
 export function isRemembered() {
@@ -55,13 +60,13 @@ export function clearAuthTokens() {
 }
 
 
-export function setToken(token, refreshToken, tokenType = 'Bearer', rememberMe = true) {
+export function setToken(token, refreshToken, tokenType = httpConfig.defaultTokenType, rememberMe = true) {
   clearAuthTokens()
 
   // rememberMe 只控制持久化方式，不影响是否存储 refresh token
   const storage = rememberMe ? localStorage : sessionStorage
   storage.setItem(TokenKey, token)
-  storage.setItem(TokenTypeKey, tokenType || 'Bearer')
+  storage.setItem(TokenTypeKey, tokenType || httpConfig.defaultTokenType)
   storage.setItem(RefreshTokenKey, refreshToken)
 
   if (rememberMe) {

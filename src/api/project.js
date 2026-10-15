@@ -1,4 +1,4 @@
-import { fetchBlob } from './base.js'
+import { fetchJsonBlob } from './base.js'
 
 export const projectApi = {
   /**
@@ -7,10 +7,9 @@ export const projectApi = {
    * @returns {Promise<{ blob: Blob, filename: string }>}
    */
   async generate(generatorData) {
-    const { blob, filename } = await fetchBlob('/generate', {
+    const { blob, filename } = await fetchJsonBlob('/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(generatorData)
+      body: generatorData
     })
     return {
       blob,

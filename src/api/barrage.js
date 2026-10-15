@@ -1,4 +1,4 @@
-import { fetchApi } from './base.js'
+import { fetchApi, fetchJson } from './base.js'
 
 export const barrageApi = {
   /**
@@ -17,10 +17,9 @@ export const barrageApi = {
    * @param {number} scrollPercent
    */
   sendBarrage(blogId, content, color = '#FFFFFF', scrollPercent = 0) {
-    return fetchApi('/barrage', {
+    return fetchJson('/barrage', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blogId: Number(blogId), content, color, scrollPercent })
+      body: { blogId: Number(blogId), content, color, scrollPercent }
     })
   },
 

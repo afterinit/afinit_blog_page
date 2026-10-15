@@ -1,6 +1,8 @@
 import { nextTick, ref } from 'vue'
+import { appConfig, uiConfig } from '@/config/app.js'
+import { STORAGE_KEYS } from '@/constants/storage.js'
 
-const currentTheme = ref(localStorage.getItem('theme') || 'dark')
+const currentTheme = ref(localStorage.getItem(STORAGE_KEYS.THEME) || appConfig.defaultTheme)
 let isTransitioning = false
 let mobileTransitionModulePromise = null
 
@@ -16,7 +18,7 @@ function updateBrowserColor(theme) {
 
 function applyTheme(theme, syncBrowserColor = true) {
   document.documentElement.setAttribute('data-theme', theme)
-  localStorage.setItem('theme', theme)
+  localStorage.setItem(STORAGE_KEYS.THEME, theme)
   if (syncBrowserColor) updateBrowserColor(theme)
 }
 
@@ -34,7 +36,7 @@ function loadMobileTransitionModule() {
 
 /** 首屏挂载后空闲预热，避免第一次点击才下载、解析手机动画模块。 */
 export function preloadMobileThemeTransition() {
-  if (!window.matchMedia('(max-width: 768px), (pointer: coarse), (hover: none)').matches) return
+  if (!window.matchMedia(uiConfig.mobileThemeMediaQuery).matches) return
 
   const preload = () => {
     loadMobileTransitionModule().catch(() => {})
@@ -101,7 +103,7 @@ export function useTheme() {
         return
       }
 
-      const useSnapshot = window.matchMedia('(max-width: 768px), (pointer: coarse), (hover: none)').matches ||
+      const useSnapshot = window.matchMedia(uiConfig.mobileThemeMediaQuery).matches ||
         typeof document.startViewTransition !== 'function'
       const origin = getTransitionOrigin(source, useSnapshot)
 
