@@ -1,14 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BlogList from '../views/BlogList.vue'
-import ArticleDetail from '../views/ArticleDetail.vue'
-import UploadTool from '../views/UploadTool.vue'
-import Login from '../views/Login.vue'
-import UserProfile from '../views/UserProfile.vue'
-import Register from '../views/Register.vue'
-import ProjectGenerator from '../views/shelf/ProjectGenerator.vue'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
@@ -16,24 +10,19 @@ const router = createRouter({
       component: BlogList
     },
     {
-      path: '/blog/:id',
-      name: 'postDetail',
-      component: ArticleDetail
-    },
-    {
       path: '/upload',
       name: 'upload',
-      component: UploadTool
+      component: () => import('../views/UploadTool.vue')
     },
     {
       path: '/login',
       name: 'login',
-      component: Login
+      component: () => import('../views/Login.vue')
     },
     {
       path: '/register',
       name: 'register',
-      component: Register
+      component: () => import('../views/Register.vue')
     },
     {
       path: '/forgot-password',
@@ -43,12 +32,17 @@ const router = createRouter({
     {
       path: '/profile',
       name: 'profile',
-      component: UserProfile
+      component: () => import('../views/UserProfile.vue')
     },
     {
       path: '/generator',
       name: 'generator',
-      component: ProjectGenerator
+      component: () => import('../views/shelf/ProjectGenerator.vue')
+    },
+    {
+      path: '/:id',
+      name: 'postDetail',
+      component: () => import('../views/ArticleDetail.vue')
     }
   ],
   scrollBehavior(to, from, savedPosition) {

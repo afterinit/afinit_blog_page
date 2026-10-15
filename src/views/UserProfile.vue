@@ -522,7 +522,7 @@ onUnmounted(() => {
             :class="post.status === 1 ? 'post-card--published' : 'post-card--unpublished'"
             v-for="post in personalPosts"
             :key="post.id"
-            @click="router.push({ path: `/blog/${post.id}`, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
+            @click="router.push({ name: 'postDetail', params: { id: post.id }, query: { ...(post.status === 0 ? { type: 'personal' } : {}), from: 'profile' } })"
           >
             <h2 class="post-title">
               <span v-if="post.status === 0" class="status-tag">未发布</span>
@@ -554,7 +554,7 @@ onUnmounted(() => {
             class="post-card post-card--published"
             v-for="post in likedPosts"
             :key="post.id"
-            @click="router.push({ path: `/blog/${post.id}`, query: { from: 'profile' } })"
+            @click="router.push({ name: 'postDetail', params: { id: post.id }, query: { from: 'profile' } })"
           >
             <h2 class="post-title">{{ post.title }}</h2>
             <p v-if="post.summary" class="post-summary">{{ post.summary }}</p>

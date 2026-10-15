@@ -1,5 +1,6 @@
 import { marked } from 'marked'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/common'
+import 'highlight.js/styles/github.css'
 
 // 配置 marked 使用 highlight.js 渲染代码块
 const renderer = new marked.Renderer()

@@ -21,7 +21,7 @@ export function onAuthExpired() {
 
 export function closeAuthExpiredModal() {
   showAuthExpiredModal.value = false
-  window.location.href = '/login'
+  window.location.assign(`${import.meta.env.BASE_URL}login`)
 }
 
 export function cancelAuthExpiredModal() {

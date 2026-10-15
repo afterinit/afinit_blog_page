@@ -2,7 +2,23 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { projectApi } from '../../api/project.js'
-import { ElMessage } from 'element-plus'
+import {
+  ElButton,
+  ElCard,
+  ElCheckbox,
+  ElCol,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+  ElOption,
+  ElRow,
+  ElSelect,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
+import 'element-plus/dist/index.css'
 import { Plus, Delete } from '@element-plus/icons-vue'
 
 const router = useRouter()

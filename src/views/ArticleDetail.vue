@@ -10,14 +10,13 @@ import { useDialog } from '../composables/useDialog.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { formatLocalTime } from '../utils/timeFormat.js'
 import { formatCount } from '../utils/countFormat.js'
-import { hasAuthSession } from '../utils/auth.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import { blogApi } from '../api/blog.js'
 import { barrageApi } from '../api/barrage.js'
 const route = useRoute()
 const router = useRouter()
-const { userInfo } = useUserInfo()
+const { userInfo, isLoggedIn } = useUserInfo()
 const { currentTheme, toggleTheme } = useTheme()
 
 function goBackToList() {
@@ -48,6 +47,7 @@ let likeAnimationTimer = null
 const isPublicArticle = computed(() => (
   route.query.type !== 'private' && route.query.type !== 'personal'
 ))
+const showLikeButton = computed(() => isLoggedIn.value && isPublicArticle.value)
 
 const isEditing = ref(false)
 const outline = ref([])
@@ -639,7 +639,7 @@ const refreshLikeCount = async () => {
 }
 
 const fetchLikeStatus = async () => {
-  if (!isPublicArticle.value || !hasAuthSession()) {
+  if (!showLikeButton.value) {
     isLiked.value = false
     return
   }
@@ -656,7 +656,7 @@ const fetchLikeStatus = async () => {
 }
 
 const toggleLike = async () => {
-  if (!articleData.value || likeLoading.value || !isPublicArticle.value) return
+  if (!articleData.value || likeLoading.value || !showLikeButton.value) return
 
   const nextLiked = !isLiked.value
   likeLoading.value = true
@@ -895,7 +895,7 @@ onUnmounted(() => {
           <span v-if="articleData.date">{{ articleData.date }}</span>
           <span>阅读 {{ formatCount(articleData.viewCount) }}</span>
           <button
-            v-if="isPublicArticle"
+            v-if="showLikeButton"
             type="button"
             class="like-button"
             :class="{ 'is-liked': isLiked, 'is-animating': likeAnimating }"
@@ -915,7 +915,7 @@ onUnmounted(() => {
             <span>{{ isLiked ? '已点赞' : '点赞' }}</span>
             <span class="like-count">{{ formatCount(articleData.likeCount) }}</span>
           </button>
-          <span v-else>点赞 {{ formatCount(articleData.likeCount) }}</span>
+          <span v-else-if="isPublicArticle">点赞 {{ formatCount(articleData.likeCount) }}</span>
         </div>
         <h1 class="article-title">{{ articleData.title }}</h1>
         <p v-if="articleData.summary" class="article-summary typora-style" v-html="articleData.summaryHtml"></p>

@@ -9,6 +9,8 @@ import { formatCount } from '../utils/countFormat.js'
 import { useUserInfo } from '../composables/useUserInfo.js'
 import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
+import loolcLogo from '../assets/loolc-logo.png'
+import loolcLogoDark from '../assets/loolc-logo-dark.png'
 import { AuthError } from '../utils/request.js'
 import { blogApi } from '../api/blog.js'
 import { userApi } from '../api/user.js'
@@ -313,8 +315,20 @@ onUnmounted(() => {
 
     <!-- 顶部栏 -->
     <header class="header">
+      <button
+        type="button"
+        class="brand-home"
+        aria-label="返回 LOOLC 首页"
+        @click="router.push('/')"
+      >
+        <img
+          :src="currentTheme === 'dark' ? loolcLogoDark : loolcLogo"
+          alt="LOOLC"
+          class="brand-logo"
+        />
+      </button>
       <div class="header-actions">
-        <a href="mailto:afinit@afinit.top" class="contact-link" title="afinit@afinit.top">联系作者</a>
+        <a href="mailto:afinit@loolc.com" class="contact-link" title="afinit@loolc.com">联系作者</a>
         <ThemeToggle />
         <template v-if="isLoggedIn">
           <!-- 发布文章按钮 -->
@@ -462,7 +476,13 @@ onUnmounted(() => {
             :class="{ 'post-card--self': userInfo && String(userInfo.id) === String(post.userId) }"
             v-for="post in posts"
             :key="post.id"
-            @click="router.push(`/blog/${post.id}${currentTab === 'private' ? (userInfo?.role === 1 ? '?type=private' : '?type=personal') : ''}`)"
+            @click="router.push({
+              name: 'postDetail',
+              params: { id: post.id },
+              query: currentTab === 'private'
+                ? { type: userInfo?.role === 1 ? 'private' : 'personal' }
+                : {}
+            })"
           >
             <h2 class="post-title">{{ post.title }}</h2>
             <p class="post-summary">{{ post.summary }}</p>
@@ -533,11 +553,28 @@ onUnmounted(() => {
 .header {
   margin-bottom: 50px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
+  gap: 24px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 20px;
 }
+.brand-home {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+}
+.brand-logo {
+  display: block;
+  width: 168px;
+  height: auto;
+  transition: transform 0.2s ease;
+}
+.brand-home:hover .brand-logo { transform: translateY(-1px); }
+.brand-home:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 6px; }
 .header-actions { display: flex; align-items: center; gap: 16px; }
 
 .contact-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; transition: color 0.2s; }
@@ -678,6 +715,7 @@ onUnmounted(() => {
     padding-bottom: 16px;
     align-items: center;
   }
+  .brand-logo { width: 140px; }
   .header-actions {
     width: 100%;
     flex-wrap: wrap;

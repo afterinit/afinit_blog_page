@@ -90,11 +90,14 @@ async function publishArticle() {
 
     showAlert(res.msg || res.message, () => {
       const isAdmin = userInfo.value && userInfo.value.role === 1;
-      const query = isAdmin ? '' : '?type=personal';
       const newId = res.data;
       
       if (newId) {
-        router.push(`/blog/${newId}${query}`);
+        router.push({
+          name: 'postDetail',
+          params: { id: newId },
+          query: isAdmin ? {} : { type: 'personal' }
+        });
       } else {
         router.push('/');
       }
