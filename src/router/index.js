@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BlogList from '../views/BlogList.vue'
+import ProjectGenerator from '../views/shelf/ProjectGenerator.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -37,7 +38,7 @@ const router = createRouter({
     {
       path: '/generator',
       name: 'generator',
-      component: () => import('../views/shelf/ProjectGenerator.vue')
+      component: ProjectGenerator
     },
     {
       path: '/:id',
