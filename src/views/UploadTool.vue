@@ -97,7 +97,7 @@ async function publishArticle() {
         router.push({
           name: ROUTE_NAMES.POST_DETAIL,
           params: { id: newId },
-          query: isAdmin ? {} : { type: 'personal' }
+          query: isAdmin ? {} : { type: 'private' }
         });
       } else {
         router.push({ name: ROUTE_NAMES.HOME });

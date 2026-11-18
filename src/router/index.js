@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BlogList from '@/views/BlogList.vue'
-import ProjectGenerator from '@/views/ProjectGenerator.vue'
 import { ROUTE_NAMES, ROUTE_PATHS } from '@/constants/routes.js'
 
 const router = createRouter({
@@ -35,11 +34,6 @@ const router = createRouter({
       path: ROUTE_PATHS.PROFILE,
       name: ROUTE_NAMES.PROFILE,
       component: () => import('@/views/UserProfile.vue')
-    },
-    {
-      path: ROUTE_PATHS.GENERATOR,
-      name: ROUTE_NAMES.GENERATOR,
-      component: ProjectGenerator
     },
     {
       path: ROUTE_PATHS.POST_DETAIL,

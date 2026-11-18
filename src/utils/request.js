@@ -19,13 +19,17 @@ export class AuthError extends Error {
 const http = axios.create({
   timeout: httpConfig.timeout,
   validateStatus: () => true,
-  transformResponse: [(data) => data],
+  transformResponse: [(data) => {
+    return typeof data === 'string' ? parseJsonSafe(data) : data
+  }],
 })
 
 const refreshHttp = axios.create({
   timeout: httpConfig.timeout,
   validateStatus: () => true,
-  transformResponse: [(data) => data],
+  transformResponse: [(data) => {
+    return typeof data === 'string' ? parseJsonSafe(data) : data
+  }],
 })
 
 // ─── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -69,7 +73,6 @@ function createFetchResponse(response) {
     },
     json: async () => parseBody(data),
     text: async () => stringifyBody(data),
-    blob: async () => data,
   }
 }
 
@@ -82,17 +85,8 @@ function handleAuthFailure(skipRedirect = false) {
   onAuthExpired()
 }
 
-async function isBusinessAuthError(response) {
-  let data = response.data
-  if (data instanceof Blob && data.type.includes('application/json')) {
-    try {
-      data = JSON.parse(await data.text())
-    } catch {
-      // Ignore
-    }
-  } else {
-    data = parseBody(data)
-  }
+function isBusinessAuthError(response) {
+  const data = parseBody(response.data)
   const code = String(data?.code)
   return ['20410', '20412', '20413'].includes(code)
 }
@@ -202,7 +196,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   // ── 成功处理器（收到 HTTP 响应，包括 401） ──
   async (response) => {
-    if (response.status !== 401 && !(await isBusinessAuthError(response))) {
+    if (response.status !== 401 && !isBusinessAuthError(response)) {
       return response
     }
     
@@ -254,7 +248,6 @@ export default function request(url, options = {}) {
     config.withCredentials = true
   }
   if (options.skipAuthRedirect) config.skipAuthRedirect = true
-  if (options.responseType) config.responseType = options.responseType
 
   return http(config).then(createFetchResponse)
 }

@@ -20,25 +20,16 @@ const emit = defineEmits(['logout'])
 const router = useRouter()
 const { currentTheme } = useTheme()
 const showUserMenu = ref(false)
-const showToolsMenu = ref(false)
 const userMenuRef = ref(null)
-const toolsMenuRef = ref(null)
 const contactHref = computed(() => `mailto:${appConfig.contactEmail}`)
 
 function goTo(name) {
   showUserMenu.value = false
-  showToolsMenu.value = false
   router.push({ name })
 }
 
 function toggleUserMenu() {
   showUserMenu.value = !showUserMenu.value
-  showToolsMenu.value = false
-}
-
-function toggleToolsMenu() {
-  showToolsMenu.value = !showToolsMenu.value
-  showUserMenu.value = false
 }
 
 function logout() {
@@ -49,9 +40,6 @@ function logout() {
 function onOutsideClick(event) {
   if (userMenuRef.value && !userMenuRef.value.contains(event.target)) {
     showUserMenu.value = false
-  }
-  if (toolsMenuRef.value && !toolsMenuRef.value.contains(event.target)) {
-    showToolsMenu.value = false
   }
 }
 
@@ -86,22 +74,8 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
 
       <template v-if="props.isLoggedIn">
         <button type="button" class="user-menu nav-button" @click="goTo(ROUTE_NAMES.UPLOAD)">
-          <span class="tools-btn-label">发布文章</span>
+          <span class="publish-label">发布文章</span>
         </button>
-
-        <div ref="toolsMenuRef" class="user-menu" @click.stop="toggleToolsMenu">
-          <span class="tools-btn-label">工具</span>
-          <span class="dropdown-caret" :class="{ rotated: showToolsMenu }">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-              <path d="M1.5 3.5L5 7L8.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </span>
-          <Transition name="dropdown">
-            <div v-if="showToolsMenu" class="dropdown-menu">
-              <button type="button" class="dropdown-item" @click.stop="goTo(ROUTE_NAMES.GENERATOR)">项目构建器</button>
-            </div>
-          </Transition>
-        </div>
 
         <div ref="userMenuRef" class="user-menu" @click.stop="toggleUserMenu">
           <span class="user-avatar">
@@ -207,8 +181,7 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
 }
 .user-menu:hover { background: var(--bg-hover); border-color: var(--text-secondary); }
 .nav-button { padding: 5px 10px; }
-.tools-btn-label { padding-left: 5px; color: var(--text-primary); font-size: 13px; font-weight: 500; }
-.nav-button .tools-btn-label { padding-left: 0; }
+.publish-label { color: var(--text-primary); font-size: 13px; font-weight: 500; }
 .user-avatar {
   width: 28px;
   height: 28px;
@@ -282,6 +255,6 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   .contact-label { display: none; }
   .header-actions :deep(.theme-toggle-btn) { width: 38px; height: 38px; min-width: 38px; min-height: 38px; padding: 8px; }
   .user-menu { gap: 4px; padding: 4px 6px; }
-  .tools-btn-label { padding-left: 0; font-size: 12px; }
+  .publish-label { font-size: 12px; }
 }
 </style>

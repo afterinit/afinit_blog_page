@@ -50,10 +50,8 @@ async function fetchPosts(silent = false) {
   if (!silent) postsLoading.value = true
   postsError.value   = ''
   try {
-    // 管理员「文章审核」走 /blog/private，普通用户「待审核」走 /blog/personal
-    const scope = currentTab.value === 'private'
-      ? (userInfo.value?.role === 1 ? 'private' : 'personal')
-      : 'public'
+    // 待审核与文章审核统一走 /blog/private
+    const scope = currentTab.value === 'private' ? 'private' : 'public'
     const res = await blogApi.getBlogList(postsPage.value, postsSize.value, scope)
     const data = res.data
     posts.value = Array.isArray(data) ? data : (data?.records ?? [])
@@ -391,7 +389,7 @@ onUnmounted(() => {
               name: ROUTE_NAMES.POST_DETAIL,
               params: { id: post.id },
               query: currentTab === 'private'
-                ? { type: userInfo?.role === 1 ? 'private' : 'personal' }
+                ? { type: 'private' }
                 : {}
             })"
           >

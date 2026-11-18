@@ -36,16 +36,15 @@ export const blogApi = {
 
   /**
    * 获取文章详情
+   * 未发布的文章统一使用 /blog/private/${id}
    * @param {string|number} id
    * @param {boolean|string} scope - false/'public' | true/'personal' | 'private'
    */
   getBlogDetail(id, scope = 'public') {
-    const resolved = resolveScope(scope)
-    const endpoint = resolved === 'private'
+    const isPrivate = scope === 'private' || scope === 'personal' || scope === true
+    const endpoint = isPrivate
       ? `/blog/private/${id}`
-      : resolved === 'personal'
-        ? `/blog/personal/${id}`
-        : `/blog/${id}`
+      : `/blog/${id}`
     return fetchApi(endpoint)
   },
 

@@ -5,7 +5,6 @@ export const ROUTE_NAMES = Object.freeze({
   REGISTER: 'register',
   FORGOT_PASSWORD: 'forgotPassword',
   PROFILE: 'profile',
-  GENERATOR: 'generator',
   POST_DETAIL: 'postDetail',
 })
 
@@ -16,6 +15,5 @@ export const ROUTE_PATHS = Object.freeze({
   REGISTER: '/register',
   FORGOT_PASSWORD: '/forgot-password',
   PROFILE: '/profile',
-  GENERATOR: '/generator',
   POST_DETAIL: '/:id',
 })

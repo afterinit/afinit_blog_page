@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import SHA256 from 'crypto-js/sha256'
 import { useTurnstile } from '../composables/useTurnstile.js'
 import { setToken } from '../utils/auth.js'
@@ -11,6 +11,7 @@ import { ROUTE_NAMES } from '@/constants/routes.js'
 const { markLoggedIn } = useUserInfo()
 
 const router     = useRouter()
+const route      = useRoute()
 const username   = ref('')
 const password   = ref('')
 const rememberMe = ref(false)
@@ -71,7 +72,12 @@ const handleLogin = async () => {
     if (res.data?.accessToken) {
       setToken(res.data.accessToken, res.data.refreshToken, res.data.tokenType, rememberMe.value)
       markLoggedIn()           // 更新共享 ref，BlogList 挂载时直接拿到已登录状态
-      await router.push({ name: ROUTE_NAMES.HOME })
+      const redirect = route.query.redirect
+      if (redirect && typeof redirect === 'string' && redirect.startsWith('/')) {
+        await router.push(redirect)
+      } else {
+        await router.push({ name: ROUTE_NAMES.HOME })
+      }
     } else {
       errorMsg.value = res.msg || res.message
       resetTurnstile()

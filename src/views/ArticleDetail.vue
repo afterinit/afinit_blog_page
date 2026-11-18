@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked, parseMdToJson, processHtml } from '../utils/mdParser.js'
 import { AuthError } from '../utils/request.js'
@@ -14,11 +14,47 @@ import { useTheme } from '../composables/useTheme.js'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { blogApi } from '../api/blog.js'
 import { barrageApi } from '../api/barrage.js'
+import { commentApi } from '@/api/comment.js'
+import CommentDrawer from '@/components/comment/CommentDrawer.vue'
 import { ROUTE_NAMES } from '@/constants/routes.js'
 const route = useRoute()
 const router = useRouter()
 const { userInfo, isLoggedIn } = useUserInfo()
 const { currentTheme, toggleTheme } = useTheme()
+
+// 评论抽屉控制与总数状态
+const showCommentDrawer = ref(false)
+const totalCommentCount = ref(0)
+const articleReading = ref(null)
+
+const toggleCommentDrawer = () => {
+  showCommentDrawer.value = !showCommentDrawer.value
+}
+
+function updateCommentParallax(event = null) {
+  const surface = articleReading.value
+  if (!surface || (event && event.pointerType !== 'mouse')) return
+
+  const horizontal = event ? (event.clientX / window.innerWidth) * 2 - 1 : 0
+  const vertical = event ? (event.clientY / window.innerHeight) * 2 - 1 : 0
+  surface.style.setProperty('--comment-pointer-x', String(horizontal))
+  surface.style.setProperty('--comment-pointer-y', String(vertical))
+}
+
+watch(showCommentDrawer, isOpen => {
+  if (!isOpen) updateCommentParallax()
+})
+
+const fetchCommentCount = async () => {
+  try {
+    const res = await commentApi.getCommentCount(route.params.id)
+    if (res && res.success && typeof res.data === 'number') {
+      totalCommentCount.value = res.data
+    }
+  } catch {
+    // 静默降级
+  }
+}
 
 function goBackToList() {
   const targetRoute = {
@@ -214,14 +250,20 @@ const reportArticleView = () => {
 const fetchArticle = async () => {
   loading.value = true
   error.value = ''
+  articleReady.value = false
+  articleData.value = null
+
   try {
     const id = route.params.id
-    // type=private → 管理员审核详情；type=personal → 用户自己的待审/草稿
-    const type = route.query.type
-    const scope = type === 'private' || type === 'personal' ? type : 'public'
+    // 只要是未发布（type 为 private 或 personal），统一按 private 接口请求 /blog/private/{id}
+    const isUnpublished = route.query.type === 'private' || route.query.type === 'personal'
+    const scope = isUnpublished ? 'private' : 'public'
     const res = await blogApi.getBlogDetail(id, scope)
 
     const data = res.data ? res.data : res
+    if (!data || (!data.id && !data.title && !data.content)) {
+      throw new Error(res.msg || '文章不存在或已被删除')
+    }
 
     let dateStr = data.createTime ? formatLocalTime(data.createTime) : ''
     let htmlRaw = marked.parse(data.content || '');
@@ -246,20 +288,29 @@ const fetchArticle = async () => {
       rawContent: data.content || ''
     }
 
-  } catch (err) {
-    if (err.isAuthError) return
-    error.value = err.message
-    console.error(err)
-  } finally {
-    loading.value = false
-    // 等待 Vue 渲染完文章内容后，重新计算滚动布局，防止弹幕堆叠
+    // 文章查询成功后，才标记 articleReady 并触发后续的评论、弹幕、点赞等查询
     nextTick(() => {
-      // 稍微延迟以确保页面布局基本完成
       setTimeout(() => {
         updateScrollInfo()
         articleReady.value = true
+
+        // 仅在文章加载成功后，才查询后续关联数据；文章查询失败时绝对不发起评论/弹幕/点赞请求
+        if (isPublicArticle.value) {
+          fetchLikeStatus()
+          reportArticleView()
+        }
+        fetchCommentCount()
+        loadBarrages()
       }, 100)
     })
+  } catch (err) {
+    articleReady.value = false
+    articleData.value = null
+    if (err.isAuthError) return
+    error.value = err.message || '获取文章详情失败'
+    console.error(err)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -660,7 +711,11 @@ const fetchLikeStatus = async () => {
 }
 
 const toggleLike = async () => {
-  if (!articleData.value || likeLoading.value || !showLikeButton.value) return
+  if (!articleData.value || likeLoading.value) return
+  if (!isLoggedIn.value) {
+    showToast('请先登录后再参与点赞', true)
+    return
+  }
 
   const nextLiked = !isLiked.value
   likeLoading.value = true
@@ -694,11 +749,8 @@ const toggleLike = async () => {
   }
 }
 
-onMounted(() => {
-  fetchArticle()
-  fetchLikeStatus()
-  reportArticleView()
-  loadBarrages()
+onMounted(async () => {
+  await fetchArticle()
   window.addEventListener('scroll', handleScroll, { passive: true })
   window.addEventListener('click', handleGlobalClick)
   window.addEventListener('touchstart', handleGlobalClick, { passive: true })
@@ -714,7 +766,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page-wrapper">
+  <div class="article-viewport-root">
+    <div
+      class="page-wrapper"
+      :class="{ 'outline-open-padding': showOutline }"
+    >
 
     <!-- 弹幕飞行层：完全响应式跟随滚动百分比 -->
     <div class="barrage-layer" aria-hidden="true" v-show="barrageEnabled && articleReady">
@@ -744,107 +800,40 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 弹幕发送面板（右下角，可拖动，点击唤醒放大） -->
-    <transition name="panel-pop">
-      <div
-        v-if="panelVisible && articleReady"
-        class="barrage-panel"
-        :class="{ 'barrage-panel--active': barrageInputActive }"
-        :style="panelX !== null ? { left: panelX + 'px', top: panelY + 'px', right: 'auto', bottom: 'auto' } : {}"
-        @mousedown="startDragPanel"
-        @touchstart.passive="startDragPanel"
-      >
-        <button class="barrage-close-btn" @click.stop="hidePanel" title="隐藏">×</button>
-        <div class="barrage-panel-body">
-          <button class="barrage-toggle-btn" @click.stop="toggleBarrage" :title="barrageEnabled ? '关闭弹幕' : '开启弹幕'">
-            <!-- 开眼图标 -->
-            <svg v-if="barrageEnabled" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-            <!-- 闭眼图标 -->
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-              <line x1="1" y1="1" x2="23" y2="23"></line>
+    <!-- 移动端遮罩与大纲侧边栏（Teleport 到 body，严格固定在视口左侧，不受任何局部变换影响） -->
+    <Teleport to="body">
+      <div class="outline-mobile-mask" v-if="showOutline" @click="showOutline = false"></div>
+
+      <!-- 大纲侧边栏 / 移动端左侧抽屉 -->
+      <div class="outline-sidebar" :class="{ 'outline-open': showOutline }">
+        <div class="outline-header">
+          <h3>文章大纲</h3>
+          <!-- 移动端关闭按钮 -->
+          <button class="outline-close-btn" @click="showOutline = false" title="关闭大纲">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
-          <input
-            class="barrage-panel-input"
-            v-model="barrageInput"
-            placeholder="发个弹幕..."
-            maxlength="20"
-            @focus="barrageInputActive = true"
-            @blur="onInputBlur"
-            @keydown.enter="sendBarrage"
-            @mousedown.stop
-          />
-          <transition name="send-fade">
-            <button
-              v-if="barrageInputActive"
-              class="barrage-panel-send"
-              :disabled="barrageSending || !barrageInput.trim()"
-              @click.stop="sendBarrage"
-              @mousedown.stop
-            >
-              <span v-if="!barrageSending">发送</span>
-              <span v-else class="btn-spinner"></span>
-            </button>
-          </transition>
         </div>
-        <transition name="fade-msg">
-          <p v-if="barrageError" class="barrage-msg barrage-msg--err">{{ barrageError }}</p>
-        </transition>
+        <div class="outline-content" v-if="outline.length > 0">
+          <a 
+            v-for="item in outline" 
+            :key="item.id" 
+            :href="'#' + item.id"
+            class="outline-item"
+            :style="{ paddingLeft: (item.level - 1) * 16 + 16 + 'px' }"
+            @click.prevent="scrollToHeading(item.id)"
+            :title="item.text"
+          >
+            {{ item.text }}
+          </a>
+        </div>
+        <div v-else class="outline-empty">
+          暂无大纲
+        </div>
       </div>
-    </transition>
-
-    <!-- 顶部悬浮提示 (Toast) -->
-    <transition name="toast-slide">
-      <div v-if="toastMsg" class="floating-toast" :class="{'toast-error': toastIsError}">
-        {{ toastMsg }}
-      </div>
-    </transition>
-
-    <!-- 隐藏时右侧半圆唤起按钮 -->
-    <transition name="peek-slide">
-      <button v-if="!panelVisible && articleReady" class="barrage-peek" @click="showPanel" title="发弹幕">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-      </button>
-    </transition>
-
-    <!-- 移动端遮罩（点击关闭抽屉） -->
-    <div class="outline-mobile-mask" v-if="showOutline" @click="showOutline = false"></div>
-
-    <!-- 大纲侧边栏 / 移动端左侧抽屉 -->
-    <div class="outline-sidebar" :class="{ 'outline-open': showOutline }">
-      <div class="outline-header">
-        <h3>文章大纲</h3>
-        <!-- 移动端关闭按钮 -->
-        <button class="outline-close-btn" @click="showOutline = false" title="关闭大纲">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="outline-content" v-if="outline.length > 0">
-        <a 
-          v-for="item in outline" 
-          :key="item.id" 
-          :href="'#' + item.id"
-          class="outline-item"
-          :style="{ paddingLeft: (item.level - 1) * 16 + 16 + 'px' }"
-          @click.prevent="scrollToHeading(item.id)"
-          :title="item.text"
-        >
-          {{ item.text }}
-        </a>
-      </div>
-      <div v-else class="outline-empty">
-        暂无大纲
-      </div>
-    </div>
+    </Teleport>
 
     <div class="container">
       <div class="header-nav">
@@ -860,7 +849,19 @@ onUnmounted(() => {
         </div>
         <div v-if="!loading && !error && !isEditing" class="action-buttons">
           <ThemeToggle />
-          <button class="btn btn-outline" @click="downloadMd">下载Markdown文档</button>
+          <button
+            type="button"
+            class="action-icon-btn download-btn"
+            @click="downloadMd"
+            title="下载 Markdown 文档"
+            aria-label="下载 Markdown 文档"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
           <button v-if="userInfo && articleData && (String(userInfo.id) === String(articleData.userId) || userInfo.role === 1)" class="btn btn-outline" @click="startEdit">修改文章</button>
           <button v-if="userInfo && articleData && (String(userInfo.id) === String(articleData.userId) || userInfo.role === 1)" class="btn btn-outline btn-danger" @click="showDeleteModal = true">删除</button>
         </div>
@@ -889,7 +890,13 @@ onUnmounted(() => {
     </div>
 
     <!-- 阅读模式 -->
-    <div v-else>
+    <div
+      v-else
+      ref="articleReading"
+      class="article-reading"
+      :class="{ 'is-receded': showCommentDrawer }"
+      :style="{ transformOrigin: `center calc(${currentScrollTop}px + 35vh)` }"
+    >
       <div v-if="loading" class="status-msg">正在加载文章...</div>
       <div v-else-if="error" class="status-msg error">{{ error }}</div>
       
@@ -898,28 +905,6 @@ onUnmounted(() => {
           <span v-if="articleData.nickname">{{ articleData.nickname }}</span>
           <span v-if="articleData.date">{{ articleData.date }}</span>
           <span>阅读 {{ formatCount(articleData.viewCount) }}</span>
-          <button
-            v-if="showLikeButton"
-            type="button"
-            class="like-button"
-            :class="{ 'is-liked': isLiked, 'is-animating': likeAnimating }"
-            :disabled="likeLoading"
-            :aria-pressed="isLiked"
-            :aria-label="isLiked ? '取消点赞' : '点赞'"
-            @click="toggleLike"
-          >
-            <span class="like-icon-wrap" aria-hidden="true">
-              <svg class="like-icon" viewBox="0 0 24 24">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" />
-              </svg>
-              <span v-if="likeAnimating" class="like-burst">
-                <i v-for="index in 8" :key="index" :style="{ '--angle': `${(index - 1) * 45}deg` }"></i>
-              </span>
-            </span>
-            <span>{{ isLiked ? '已点赞' : '点赞' }}</span>
-            <span class="like-count">{{ formatCount(articleData.likeCount) }}</span>
-          </button>
-          <span v-else-if="isPublicArticle">点赞 {{ formatCount(articleData.likeCount) }}</span>
         </div>
         <h1 class="article-title">{{ articleData.title }}</h1>
         <p v-if="articleData.summary" class="article-summary typora-style" v-html="articleData.summaryHtml"></p>
@@ -971,10 +956,146 @@ onUnmounted(() => {
     </div>
     </div>
   </div>
+
+    <!-- 短视频式右侧悬浮互动操作栏（喜欢、评论，Teleport 到 body 保证视口绝对固定，打开评论区时完全隐藏背景按钮） -->
+    <Teleport to="body">
+      <aside
+        v-if="articleReady && !loading && !error && !isEditing && !showCommentDrawer"
+        class="video-actions-rail"
+        aria-label="文章互动"
+        @click.stop
+      >
+        <!-- 喜欢 / 点赞按钮 -->
+        <button
+          type="button"
+          class="rail-btn like-rail-btn"
+          :class="{ 'is-active': isLiked, 'is-animating': likeAnimating }"
+          :disabled="likeLoading"
+          :title="isLiked ? '取消喜欢' : '喜欢'"
+          @click.stop="toggleLike"
+        >
+          <div class="rail-icon-box">
+            <svg class="rail-heart-icon" viewBox="0 0 24 24">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" />
+            </svg>
+            <span v-if="likeAnimating" class="like-burst">
+              <i v-for="index in 8" :key="index" :style="{ '--angle': `${(index - 1) * 45}deg` }"></i>
+            </span>
+          </div>
+          <span class="rail-count">{{ formatCount(articleData?.likeCount || 0) }}</span>
+        </button>
+
+        <!-- 评论按钮 -->
+        <button
+          type="button"
+          class="rail-btn comment-rail-btn"
+          :class="{ 'is-active': showCommentDrawer }"
+          title="评论"
+          @click.stop="toggleCommentDrawer"
+        >
+          <div class="rail-icon-box">
+            <svg class="rail-comment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <span class="rail-count">{{ formatCount(totalCommentCount) }}</span>
+        </button>
+      </aside>
+    </Teleport>
+
+    <!-- 弹幕发送面板与唤起按钮（Teleport 到 body，保证视口绝对固定，打开评论区时优雅隐藏） -->
+    <Teleport to="body">
+      <!-- 弹幕发送面板（右下角，可拖动，点击唤醒放大） -->
+      <transition name="panel-pop">
+        <div
+          v-if="panelVisible && articleReady && !showCommentDrawer"
+          class="barrage-panel"
+          :class="{ 'barrage-panel--active': barrageInputActive }"
+          :style="panelX !== null ? { left: panelX + 'px', top: panelY + 'px', right: 'auto', bottom: 'auto' } : {}"
+          @mousedown="startDragPanel"
+          @touchstart.passive="startDragPanel"
+        >
+          <button class="barrage-close-btn" @click.stop="hidePanel" title="隐藏">×</button>
+          <div class="barrage-panel-body">
+            <button class="barrage-toggle-btn" @click.stop="toggleBarrage" :title="barrageEnabled ? '关闭弹幕' : '开启弹幕'">
+              <!-- 开眼图标 -->
+              <svg v-if="barrageEnabled" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <!-- 闭眼图标 -->
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+            <input
+              class="barrage-panel-input"
+              v-model="barrageInput"
+              placeholder="发个弹幕..."
+              maxlength="20"
+              @focus="barrageInputActive = true"
+              @blur="onInputBlur"
+              @keydown.enter="sendBarrage"
+              @mousedown.stop
+            />
+            <transition name="send-fade">
+              <button
+                v-if="barrageInputActive"
+                class="barrage-panel-send"
+                :disabled="barrageSending || !barrageInput.trim()"
+                @click.stop="sendBarrage"
+                @mousedown.stop
+              >
+                <span v-if="!barrageSending">发送</span>
+                <span v-else class="btn-spinner"></span>
+              </button>
+            </transition>
+          </div>
+          <transition name="fade-msg">
+            <p v-if="barrageError" class="barrage-msg barrage-msg--err">{{ barrageError }}</p>
+          </transition>
+        </div>
+      </transition>
+
+      <!-- 顶部悬浮提示 (Toast) -->
+      <transition name="toast-slide">
+        <div v-if="toastMsg" class="floating-toast" :class="{'toast-error': toastIsError}">
+          {{ toastMsg }}
+        </div>
+      </transition>
+
+      <!-- 隐藏时右侧半圆唤起按钮 -->
+      <transition name="peek-slide">
+        <button v-if="!panelVisible && articleReady && !showCommentDrawer" class="barrage-peek" @click="showPanel" title="发弹幕">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+      </transition>
+    </Teleport>
+
+    <!-- 右侧短视频式抽屉评论区：仅在文章成功加载且无错误时挂载 -->
+    <CommentDrawer
+      v-if="articleReady && !error"
+      :blog-id="route.params.id"
+      v-model="showCommentDrawer"
+      @update:total-count="count => totalCommentCount = count"
+      @backdrop-pointer="updateCommentParallax"
+    />
+  </div>
 </template>
 
 <style scoped>
-/* ===== 整体布局 ===== */
+/* ===== 视口容器 ===== */
+.article-viewport-root {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* ===== 文章布局 ===== */
 .page-wrapper { 
   display: flex; 
   align-items: flex-start;
@@ -984,12 +1105,154 @@ onUnmounted(() => {
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
+  transition: padding-left 0.35s ease;
 }
 
-/* ===== 大纲侧边栏（桌面端） ===== */
+@media (min-width: 1200px) {
+  .page-wrapper.outline-open-padding {
+    padding-left: 290px;
+  }
+}
+
+/* ===== 短视频式右侧悬浮操作栏（喜欢、评论） ===== */
+.video-actions-rail {
+  position: fixed;
+  right: 32px;
+  bottom: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  z-index: 950;
+  pointer-events: auto;
+  transition: right 0.46s cubic-bezier(0.28, 1.15, 0.42, 1);
+}
+
+.video-actions-rail.drawer-open {
+  right: 504px;
+}
+
+.rail-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 4px;
+  margin: 0;
+  border-radius: 50%;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              color 0.2s ease;
+  position: relative;
+  outline: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rail-btn:hover {
+  transform: scale(1.18) translateY(-2px);
+  color: var(--text-primary);
+}
+
+.rail-btn:active {
+  transform: scale(0.9);
+  transition-duration: 0.1s;
+}
+
+.comment-rail-btn.is-active {
+  animation: rail-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes rail-bounce {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.24) translateY(-3px); }
+  100% { transform: scale(1); }
+}
+
+.rail-icon-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.rail-heart-icon,
+.rail-comment-icon {
+  width: 28px;
+  height: 28px;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: fill 0.2s ease, stroke 0.2s ease, transform 0.25s ease;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.16));
+}
+
+.rail-btn.is-active.like-rail-btn {
+  color: #ff4d6d;
+}
+
+.rail-btn.is-active.like-rail-btn .rail-heart-icon {
+  fill: #ff4d6d;
+  stroke: #ff4d6d;
+  filter: drop-shadow(0 2px 10px rgba(255, 77, 109, 0.45));
+}
+
+.rail-btn.is-animating .rail-heart-icon {
+  animation: like-heart-pop 0.58s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rail-btn.is-active.comment-rail-btn {
+  color: var(--text-primary);
+}
+
+.rail-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: color 0.2s ease;
+}
+
+.rail-btn:hover .rail-count {
+  color: var(--text-primary);
+}
+
+.rail-btn.is-active.like-rail-btn .rail-count {
+  color: #ff4d6d;
+}
+
+@media (max-width: 768px) {
+  .video-actions-rail {
+    right: 16px;
+    bottom: 84px;
+    gap: 18px;
+  }
+  .rail-heart-icon,
+  .rail-comment-icon {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+/* ===== 大纲侧边栏（固定在屏幕左侧，永不跟随滚动条滑动） ===== */
 .outline-sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   width: 0;
   height: 100vh;
   background: var(--bg-secondary);
@@ -999,13 +1262,37 @@ onUnmounted(() => {
   flex-shrink: 0;
   box-sizing: border-box;
   overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
-  z-index: 50;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.35s ease;
+  z-index: 2500;
 }
 
 .outline-sidebar.outline-open {
-  width: 300px;
+  width: 290px;
   border-right: 1px solid var(--border-color);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+}
+
+.outline-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+}
+.outline-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.outline-mobile-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2499;
+  backdrop-filter: blur(2px);
+  display: block;
 }
 
 .outline-header {
@@ -1121,7 +1408,57 @@ onUnmounted(() => {
 }
 .back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-.action-buttons { display: flex; gap: 12px; }
+.action-buttons { 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+}
+
+.action-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50% !important;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              color 0.2s ease, 
+              background-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.action-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+}
+
+.action-icon-btn:active {
+  transform: scale(0.92);
+}
+
+.action-icon-btn.download-btn:hover svg {
+  animation: download-bounce 0.6s ease infinite alternate;
+}
+
+@keyframes download-bounce {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(2px);
+  }
+}
 
 .btn { 
   padding: 8px 16px; 
@@ -1170,6 +1507,24 @@ onUnmounted(() => {
 .editor-textarea:focus { border-color: var(--text-primary); }
 
 .form-actions { display: flex; gap: 12px; margin-top: 24px; }
+
+/* 正文随评论抽屉开合产生透视位移，并跟随遮罩上的鼠标产生视差 */
+@media (prefers-reduced-motion: no-preference) {
+  .article-reading {
+    transition: transform 0.32s cubic-bezier(0.2, 0.75, 0.3, 1);
+  }
+
+  .article-reading.is-receded {
+    transform:
+      perspective(1100px)
+      translate(
+        calc(clamp(-52px, -4vw, -14px) + var(--comment-pointer-x, 0) * 18px),
+        calc(var(--comment-pointer-y, 0) * 10px)
+      )
+      rotateY(calc(12deg + var(--comment-pointer-x, 0) * 4deg))
+      scale(0.89);
+  }
+}
 
 /* Typora 主题文章样式 - 深色直角版 */
 .article-render { animation: fade-in 0.6s ease-out; }
@@ -1549,6 +1904,14 @@ onUnmounted(() => {
   .action-buttons .btn {
     font-size: 12px;
     padding: 6px 10px;
+  }
+
+  .action-icon-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px;
   }
 }
 
